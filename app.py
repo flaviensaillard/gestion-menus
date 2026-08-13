@@ -53,7 +53,7 @@ def load_planned_meals():
     except Exception:
         return []
 
-# --- GENERATEUR PDF (FPDF2) ---
+# --- GÉNÉRATEUR PDF (FPDF2) ---
 class MenuPDF(FPDF):
     def __init__(self, start_date_str, end_date_str):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -139,79 +139,28 @@ tab_planning, tab_recipes, tab_ingredients, tab_recurring = st.tabs([
 ])
 
 # =============================================================================
-# ONGLET 1 : PLANNING & GÉNÉRATION PDF
+# ONGLET 1 : PLANNING PAR CADRES JOURNALIERS & GÉNÉRATION PDF
 # =============================================================================
 with tab_planning:
-    col_date, _ = st.columns([1, 2])
-    with col_date:
+    col_d1, _ = st.columns([1, 2])
+    with col_d1:
         start_date = st.date_input("Date du samedi (début du menu)", datetime.date.today(), key="start_date_picker")
     
     end_date = start_date + datetime.timedelta(days=6)
-
     start_str = start_date.strftime("%d/%m/%Y")
     end_str = end_date.strftime("%d/%m/%Y")
 
-    st.subheader(f"📌 Planification du {start_str} au {end_str}")
+    st.subheader(f"📌 Planning de la semaine ({start_str} au {end_str})")
 
-    meal_types = ["Midi", "Soir"]
-
+    # Chargement des référentiels
     recipes = load_recipes()
     ingredients = load_ingredients()
-
     recipe_map = {r["name"]: r["id"] for r in recipes if r and "name" in r}
     ingredient_map = {i["name"]: i["id"] for i in ingredients if i and "name" in i}
 
-    # Choix du type d'élément (Hors du formulaire pour la réactivité immédiate)
-    source_type = st.radio(
-        "Élément à ajouter :", 
-        ["Recette", "Ingrédient simple"], 
-        horizontal=True,
-        key="meal_source_type"
-    )
-
-    with st.form("add_meal_form"):
-        c1, c2, c3, c4 = st.columns([2, 2, 4, 2])
-        with c1:
-            selected_day = st.selectbox("Jour", DAYS)
-        with c2:
-            selected_type = st.selectbox("Repas", meal_types)
-        with c3:
-            if source_type == "Recette":
-                recipe_names = ["-- Aucune --"] + sorted(list(recipe_map.keys()))
-                chosen_item = st.selectbox("Choisir la recette", recipe_names)
-            else:
-                ingredient_names = ["-- Aucun --"] + sorted(list(ingredient_map.keys()))
-                chosen_item = st.selectbox("Choisir l'ingrédient simple", ingredient_names)
-        with c4:
-            nb_persons = st.number_input("Pers.", min_value=1, max_value=20, value=4, step=1)
-
-        submit_meal = st.form_submit_button("Affecter au menu")
-
-    if submit_meal:
-        recipe_id = recipe_map.get(chosen_item) if source_type == "Recette" and chosen_item != "-- Aucune --" else None
-        ingredient_id = ingredient_map.get(chosen_item) if source_type == "Ingrédient simple" and chosen_item != "-- Aucun --" else None
-
-        if recipe_id or ingredient_id:
-            try:
-                # Supprime le repas déjà existant sur ce créneau
-                supabase.table("planned_meals").delete().eq("day", selected_day).eq("meal_type", selected_type).execute()
-                # Insère le nouveau repas avec le nombre de personnes
-                supabase.table("planned_meals").insert({
-                    "day": selected_day,
-                    "meal_type": selected_type,
-                    "recipe_id": recipe_id,
-                    "ingredient_id": ingredient_id,
-                    "nb_persons": nb_persons
-                }).execute()
-                st.success(f"Repas mis à jour pour {selected_day} ({selected_type}) - {nb_persons} pers.")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erreur lors de la mise à jour : {e}")
-
-    # Récupération et traitement des données planifiées
+    # Chargement et structuration des repas planifiés
     planned = load_planned_meals()
-    planning_dict = {}
+    planning_data = {}
     shopping_list = []
 
     for p in planned:
@@ -222,24 +171,129 @@ with tab_planning:
         persons = p.get("nb_persons") or 4
         
         item_name = None
-        if p.get("recipes"):
+        if p.get("recipes") and isinstance(p["recipes"], dict):
             item_name = p["recipes"].get("name")
-        elif p.get("ingredients"):
+        elif p.get("ingredients") and isinstance(p["ingredients"], dict):
             item_name = p["ingredients"].get("name")
             
-        if item_name:
-            # Formatage pour l'affichage (ex: Lasagnes (4 pers.))
-            display_str = f"{item_name} ({persons} pers.)"
-            planning_dict[(day, m_type)] = display_str
+        if item_name and day and m_type:
+            planning_data[(day, m_type)] = {
+                "name": item_name,
+                "persons": persons
+            }
             shopping_list.append(item_name)
 
     shopping_list = sorted(list(set(shopping_list)))
     recurring_items = load_recurring_items()
 
+    # Option de réinitialisation globale
+    with st.expander("⚙️ Option : Réinitialiser toute la semaine"):
+        if st.button("🗑️ Vider entièrement le planning de la semaine"):
+            try:
+                supabase.table("planned_meals").delete().neq("day", "").execute()
+                st.success("Le planning a été entièrement vidé.")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erreur : {e}")
+
+    # --- AFFICHAGE DE 1 CADRE PAR JOUR ---
+    for day in DAYS:
+        with st.container(border=True):
+            st.markdown(f"### 📅 {day}")
+            
+            col_midi, col_soir = st.columns(2)
+            
+            # --- CADRE / BLOC MIDI ---
+            with col_midi:
+                st.markdown("#### ☀️ Midi")
+                midi_item = planning_data.get((day, "Midi"))
+                if midi_item:
+                    c_txt, c_del = st.columns([4, 1])
+                    with c_txt:
+                        st.success(f"**{midi_item['name']}** ({midi_item['persons']} pers.)")
+                    with c_del:
+                        if st.button("🗑️", key=f"del_{day}_Midi", help=f"Supprimer le midi de {day}"):
+                            supabase.table("planned_meals").delete().eq("day", day).eq("meal_type", "Midi").execute()
+                            st.cache_data.clear()
+                            st.rerun()
+                else:
+                    st.info("Aucun repas planifié")
+
+            # --- CADRE / BLOC SOIR ---
+            with col_soir:
+                st.markdown("#### 🌙 Soir")
+                soir_item = planning_data.get((day, "Soir"))
+                if soir_item:
+                    c_txt, c_del = st.columns([4, 1])
+                    with c_txt:
+                        st.success(f"**{soir_item['name']}** ({soir_item['persons']} pers.)")
+                    with c_del:
+                        if st.button("🗑️", key=f"del_{day}_Soir", help=f"Supprimer le soir de {day}"):
+                            supabase.table("planned_meals").delete().eq("day", day).eq("meal_type", "Soir").execute()
+                            st.cache_data.clear()
+                            st.rerun()
+                else:
+                    st.info("Aucun repas planifié")
+
+            # --- FORMULAIRE D'AJOUT / MODIFICATION PROPRE À CE JOUR ---
+            with st.expander(f"➕ Planifier ou modifier un repas pour {day}"):
+                source_type = st.radio(
+                    "Élément à ajouter :",
+                    ["Recette", "Ingrédient simple"],
+                    horizontal=True,
+                    key=f"source_{day}"
+                )
+                
+                with st.form(key=f"form_add_{day}"):
+                    c1, c2, c3 = st.columns([2, 4, 2])
+                    with c1:
+                        m_type = st.selectbox("Repas", ["Midi", "Soir"], key=f"mtype_{day}")
+                    with c2:
+                        if source_type == "Recette":
+                            names_list = ["-- Aucune --"] + sorted(list(recipe_map.keys()))
+                            chosen_name = st.selectbox("Choisir la recette", names_list, key=f"choice_{day}")
+                        else:
+                            names_list = ["-- Aucun --"] + sorted(list(ingredient_map.keys()))
+                            chosen_name = st.selectbox("Choisir l'ingrédient", names_list, key=f"choice_{day}")
+                    with c3:
+                        nb_pers = st.number_input("Pers.", min_value=1, max_value=20, value=4, step=1, key=f"np_{day}")
+
+                    submit_btn = st.form_submit_button(f"Enregistrer pour {day}")
+
+                if submit_btn:
+                    recipe_id = recipe_map.get(chosen_name) if source_type == "Recette" and chosen_name != "-- Aucune --" else None
+                    ingredient_id = ingredient_map.get(chosen_name) if source_type == "Ingrédient simple" and chosen_name != "-- Aucun --" else None
+
+                    if recipe_id or ingredient_id:
+                        try:
+                            # Supprime l'ancien repas sur ce créneau s'il existe
+                            supabase.table("planned_meals").delete().eq("day", day).eq("meal_type", m_type).execute()
+                            # Insère le nouveau
+                            supabase.table("planned_meals").insert({
+                                "day": day,
+                                "meal_type": m_type,
+                                "recipe_id": recipe_id,
+                                "ingredient_id": ingredient_id,
+                                "nb_persons": nb_pers
+                            }).execute()
+                            st.success(f"Repas enregistré pour {day} ({m_type}) !")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur lors de l'enregistrement : {e}")
+                    else:
+                        st.warning("Veuillez sélectionner un élément valide dans la liste.")
+
     st.divider()
 
+    # --- GÉNÉRATION DU PDF ---
+    pdf_planning_dict = {}
+    for (d, mt), item in planning_data.items():
+        pdf_planning_dict[(d, mt)] = f"{item['name']} ({item['persons']} pers.)"
+
     if st.button("📄 Générer et ouvrir le PDF du menu", type="primary"):
-        pdf_bytes = generate_pdf(planning_dict, shopping_list, recurring_items, DAYS, start_str, end_str)
+        pdf_bytes = generate_pdf(pdf_planning_dict, shopping_list, recurring_items, DAYS, start_str, end_str)
         b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
         
         html_button = f'''
@@ -348,3 +402,4 @@ with tab_recurring:
     curr_items = load_recurring_items()
     for item in curr_items:
         st.text(f"• {item}")
+    
