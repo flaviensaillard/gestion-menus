@@ -401,40 +401,21 @@ def main():
                 rec_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
                 
                 if rec_ings:
-                    # Création du tableau des ingrédients
-                    ing_data = []
+                    # Liste détaillée des ingrédients
                     for ri in rec_ings:
                         ing = next((i for i in ingredients if i['id'] == ri['ingredient_id']), None)
                         if ing:
                             qty_adjusted = ri['quantity'] * ratio
                             qty_display = format_quantity(qty_adjusted)
                             
-                            ing_data.append({
-                                "Ingrédient": ing['name'],
-                                "Quantité": qty_display,
-                                "Unité": ing['unit'],
-                                "Rayon": ing.get('category', 'Autre')
-                            })
-                    
-                    if ing_data:
-                        df_ingredients = pd.DataFrame(ing_data)
-                        st.dataframe(
-                            df_ingredients,
-                            hide_index=True,
-                            use_container_width=True,
-                            column_config={
-                                "Ingrédient": st.column_config.TextColumn("Ingrédient", width="medium"),
-                                "Quantité": st.column_config.TextColumn("Quantité", width="small"),
-                                "Unité": st.column_config.TextColumn("Unité", width="small"),
-                                "Rayon": st.column_config.TextColumn("Rayon", width="medium")
-                            }
-                        )
-                        
-                        # Affichage plus visuel (liste)
-                        st.markdown("---")
-                        st.markdown("**Liste détaillée :**")
-                        for item in ing_data:
-                            st.markdown(f"- **{item['Ingrédient']}** : {item['Quantité']} {item['Unité']} *({item['Rayon']})*")
+                            # Affichage avec mise en forme
+                            col1, col2, col3 = st.columns([3, 2, 2])
+                            with col1:
+                                st.markdown(f"**{ing['name']}**")
+                            with col2:
+                                st.markdown(f"{qty_display} {ing['unit']}")
+                            with col3:
+                                st.markdown(f"*{ing.get('category', 'Autre')}*")
                 else:
                     st.info("Aucun ingrédient pour cette recette.")
                 
