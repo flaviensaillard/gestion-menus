@@ -286,7 +286,7 @@ def main():
         else:
             st.info("Aucun ingrédient pour le moment.")
 
-    # ============================
+       # ============================
     # ONGLET RECETTES
     # ============================
     with tab_recettes:
@@ -298,21 +298,24 @@ def main():
         ingredients = st.session_state.data.get('ingredients', [])
 
         # Bouton nouvelle recette
-        col_new, col_refresh = st.columns([1, 5])
-        with col_new:
-            if st.button("➕ Nouvelle recette", use_container_width=True):
-                st.session_state.show_add_recipe = True
-        with col_refresh:
-            st.write("")
+        if st.button("➕ Nouvelle recette", use_container_width=True, key="btn_new_recipe"):
+            st.session_state.show_add_recipe = True
 
         # Modale nouvelle recette
         if st.session_state.get('show_add_recipe', False):
             with st.form("add_recipe_form"):
                 st.subheader("Créer une recette")
-                name = st.text_input("Nom *")
-                servings = st.number_input("Personnes", min_value=1, value=4)
-                instructions = st.text_area("Instructions", height=100)
-                submitted = st.form_submit_button("Créer")
+                name = st.text_input("Nom *", key="new_recipe_name")
+                servings = st.number_input("Personnes", min_value=1, value=4, key="new_recipe_servings")
+                instructions = st.text_area("Instructions", height=100, key="new_recipe_instructions")
+                col_submit, col_cancel = st.columns(2)
+                with col_submit:
+                    submitted = st.form_submit_button("Créer", use_container_width=True)
+                with col_cancel:
+                    if st.form_submit_button("Annuler", use_container_width=True):
+                        st.session_state.show_add_recipe = False
+                        st.rerun()
+                
                 if submitted:
                     if not name.strip():
                         st.error("Nom obligatoire")
@@ -331,52 +334,64 @@ def main():
         else:
             # Sélection d'une recette
             recipe_names = [r['name'] for r in recipes]
-            selected_name = st.selectbox("Choisir une recette", recipe_names, key="selected_recipe")
+            selected_name = st.selectbox(
+                "Choisir une recette", 
+                recipe_names, 
+                key="selected_recipe_selectbox"
+            )
             recipe = next((r for r in recipes if r['name'] == selected_name), None)
 
             if recipe:
                 st.markdown("---")
-                col_info, col_actions = st.columns([3, 1])
+                
+                # En-tête de la recette avec actions
+                col_info, col_actions = st.columns([3, 2])
                 with col_info:
                     st.subheader(f"📖 {recipe['name']}")
                     base_servings = recipe.get('base_servings', 4)
-                    # Ajustement des portions
                     target_servings = st.number_input(
-                        "Personnes", min_value=1, max_value=50, value=base_servings,
+                        "Personnes", 
+                        min_value=1, 
+                        max_value=50, 
+                        value=base_servings,
                         key=f"servings_{recipe['id']}"
                     )
                     ratio = target_servings / base_servings
+                
                 with col_actions:
                     st.write("")
                     st.write("")
                     col_dup, col_del = st.columns(2)
-                    if col_dup.button("📋 Dupliquer", use_container_width=True):
-                        # Duplication rapide
-                        new_name = f"{recipe['name']} (copie)"
-                        new_rec = supabase.table("recipes").insert({
-                            "name": new_name,
-                            "base_servings": recipe['base_servings'],
-                            "instructions": recipe.get('instructions', '')
-                        }).execute()
-                        new_id = new_rec.data[0]['id']
-                        # Copier les ingrédients
-                        orig_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
-                        for ri in orig_ings:
-                            supabase.table("recipe_ingredients").insert({
-                                "recipe_id": new_id,
-                                "ingredient_id": ri['ingredient_id'],
-                                "quantity": ri['quantity']
+                    with col_dup:
+                        if st.button("📋 Dupliquer", key=f"dup_recipe_{recipe['id']}", use_container_width=True):
+                            # Duplication rapide
+                            new_name = f"{recipe['name']} (copie)"
+                            new_rec = supabase.table("recipes").insert({
+                                "name": new_name,
+                                "base_servings": recipe['base_servings'],
+                                "instructions": recipe.get('instructions', '')
                             }).execute()
-                        st.success("Recette dupliquée !")
-                        refresh_data()
-                    if col_del.button("🗑️ Supprimer", use_container_width=True, type="primary"):
-                        supabase.table("recipes").delete().eq("id", recipe['id']).execute()
-                        st.success("Recette supprimée")
-                        refresh_data()
+                            new_id = new_rec.data[0]['id']
+                            # Copier les ingrédients
+                            orig_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
+                            for ri in orig_ings:
+                                supabase.table("recipe_ingredients").insert({
+                                    "recipe_id": new_id,
+                                    "ingredient_id": ri['ingredient_id'],
+                                    "quantity": ri['quantity']
+                                }).execute()
+                            st.success("Recette dupliquée !")
+                            refresh_data()
+                    with col_del:
+                        if st.button("🗑️ Supprimer", key=f"del_recipe_{recipe['id']}", use_container_width=True):
+                            supabase.table("recipes").delete().eq("id", recipe['id']).execute()
+                            st.success("Recette supprimée")
+                            refresh_data()
 
                 # Ingrédients de la recette
                 st.markdown("#### 🛒 Ingrédients")
                 rec_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
+                
                 if rec_ings:
                     # Créer un DataFrame éditable
                     ing_list = []
@@ -388,63 +403,76 @@ def main():
                                 "quantity": ri['quantity'],
                                 "unit": ing['unit']
                             })
+                    
                     df_ings = pd.DataFrame(ing_list)
                     edited_ings = st.data_editor(
                         df_ings,
                         column_config={
-                            "ingredient": "Ingrédient",
-                            "quantity": st.column_config.NumberColumn("Quantité", min_value=0.1, step=0.1),
-                            "unit": "Unité"
+                            "ingredient": st.column_config.TextColumn("Ingrédient", disabled=True),
+                            "quantity": st.column_config.NumberColumn(
+                                "Quantité", 
+                                min_value=0.1, 
+                                step=0.1,
+                                format="%.1f"
+                            ),
+                            "unit": st.column_config.TextColumn("Unité", disabled=True)
                         },
                         hide_index=True,
                         use_container_width=True,
                         num_rows="fixed",
                         key=f"rec_ings_editor_{recipe['id']}"
                     )
-                    # Boutons pour sauvegarder ou supprimer des lignes
-                    col_save_ings, col_del_ings = st.columns(2)
-                    if col_save_ings.button("💾 Sauvegarder", use_container_width=True):
-                        # Mettre à jour les quantités modifiées
-                        for idx, row in edited_ings.iterrows():
-                            original_ri = rec_ings[idx]
-                            if row['quantity'] != original_ri['quantity']:
-                                supabase.table("recipe_ingredients").update({
-                                    "quantity": row['quantity']
-                                }).eq("id", original_ri['id']).execute()
-                        st.success("Quantités mises à jour")
-                        refresh_data()
-                    if col_del_ings.button("🗑️ Supprimer sélection", use_container_width=True):
-                        selected_rows = st.session_state.get(f"rec_ings_editor_{recipe['id']}", {}).get("edited_rows", {})
-                        if selected_rows:
-                            for idx in selected_rows:
-                                ri_to_del = rec_ings[idx]
-                                supabase.table("recipe_ingredients").delete().eq("id", ri_to_del['id']).execute()
-                            st.success("Ingrédients supprimés de la recette")
+                    
+                    # Boutons d'action
+                    col_save, col_del = st.columns(2)
+                    with col_save:
+                        if st.button("💾 Sauvegarder les quantités", key=f"save_ings_{recipe['id']}", use_container_width=True):
+                            # Mettre à jour les quantités modifiées
+                            for idx, row in edited_ings.iterrows():
+                                if idx < len(rec_ings):
+                                    original_ri = rec_ings[idx]
+                                    if row['quantity'] != original_ri['quantity']:
+                                        supabase.table("recipe_ingredients").update({
+                                            "quantity": row['quantity']
+                                        }).eq("id", original_ri['id']).execute()
+                            st.success("Quantités mises à jour !")
                             refresh_data()
-                        else:
-                            st.warning("Sélectionnez des lignes à supprimer")
                 else:
                     st.info("Aucun ingrédient ajouté à cette recette.")
 
                 # Ajout d'un ingrédient
                 st.markdown("#### ➕ Ajouter un ingrédient")
-                ing_names = [i['name'] for i in ingredients if i['name'] not in [ri['ingredient'] for ri in ing_list]]
-                if ing_names:
+                existing_ing_names = [item['ingredient'] for item in ing_list] if rec_ings else []
+                available_ings = [i['name'] for i in ingredients if i['name'] not in existing_ing_names]
+                
+                if available_ings:
                     col1, col2, col3 = st.columns([2, 1, 1])
                     with col1:
-                        selected_ing = st.selectbox("Ingrédient", ing_names, key=f"add_ing_{recipe['id']}")
+                        selected_ing_name = st.selectbox(
+                            "Ingrédient", 
+                            available_ings, 
+                            key=f"select_ing_{recipe['id']}"
+                        )
                     with col2:
-                        qty = st.number_input("Quantité", min_value=0.1, value=100.0, key=f"qty_{recipe['id']}")
+                        qty = st.number_input(
+                            "Quantité", 
+                            min_value=0.1, 
+                            value=100.0, 
+                            step=10.0,
+                            key=f"qty_ing_{recipe['id']}"
+                        )
                     with col3:
-                        if st.button("Ajouter", key=f"btn_add_ing_{recipe['id']}", use_container_width=True):
-                            ing_obj = next((i for i in ingredients if i['name'] == selected_ing), None)
+                        st.write("")
+                        st.write("")
+                        if st.button("➕ Ajouter", key=f"btn_add_ing_{recipe['id']}", use_container_width=True):
+                            ing_obj = next((i for i in ingredients if i['name'] == selected_ing_name), None)
                             if ing_obj:
                                 supabase.table("recipe_ingredients").insert({
                                     "recipe_id": recipe['id'],
                                     "ingredient_id": ing_obj['id'],
                                     "quantity": qty
                                 }).execute()
-                                st.success("Ingrédient ajouté")
+                                st.success("Ingrédient ajouté !")
                                 refresh_data()
                 else:
                     st.info("Tous les ingrédients disponibles sont déjà dans la recette.")
@@ -456,19 +484,29 @@ def main():
                 else:
                     st.info("Aucune instruction.")
 
-                # Bouton pour modifier les infos de base
-                with st.expander("✏️ Modifier nom, personnes, instructions"):
-                    with st.form(f"edit_recipe_{recipe['id']}"):
-                        new_name = st.text_input("Nom", value=recipe['name'])
-                        new_servings = st.number_input("Personnes", value=recipe.get('base_servings', 4))
-                        new_instructions = st.text_area("Instructions", value=recipe.get('instructions', ''))
-                        if st.form_submit_button("Sauvegarder"):
+                # Modification des informations de base
+                with st.expander("✏️ Modifier les informations"):
+                    with st.form(f"edit_recipe_form_{recipe['id']}"):
+                        new_name = st.text_input("Nom", value=recipe['name'], key=f"edit_name_{recipe['id']}")
+                        new_servings = st.number_input(
+                            "Personnes de base", 
+                            min_value=1,
+                            value=recipe.get('base_servings', 4),
+                            key=f"edit_servings_{recipe['id']}"
+                        )
+                        new_instructions = st.text_area(
+                            "Instructions", 
+                            value=recipe.get('instructions', ''),
+                            height=150,
+                            key=f"edit_instructions_{recipe['id']}"
+                        )
+                        if st.form_submit_button("💾 Sauvegarder les modifications", use_container_width=True):
                             supabase.table("recipes").update({
-                                "name": new_name,
+                                "name": new_name.strip().capitalize(),
                                 "base_servings": new_servings,
                                 "instructions": new_instructions
                             }).eq("id", recipe['id']).execute()
-                            st.success("Recette mise à jour")
+                            st.success("Recette mise à jour !")
                             refresh_data()
 
     # ============================
