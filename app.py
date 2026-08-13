@@ -425,17 +425,6 @@ def main():
                     st.write(recipe['instructions'])
                 else:
                     st.info("Aucune instruction pour cette recette.")
-                
-                # Informations supplémentaires
-                st.markdown("---")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Personnes de base", base_servings)
-                with col2:
-                    if target_servings != base_servings:
-                        st.info(f"💡 Quantités ajustées pour {target_servings} personnes")
-                    else:
-                        st.success("✅ Quantités pour la recette de base")
 
     # ============================
     # ONGLET 3 : CRÉER / ÉDITER UNE RECETTE
