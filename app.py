@@ -4,33 +4,46 @@ import base64
 from fpdf import FPDF
 from supabase import create_client, Client
 
-# --- CONFIGURATION SUPABASE ---
-# --- CONFIGURATION SUPABASE ---
+# --- CONFIGURATION SUPABASE (SECRETS) ---
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 except KeyError:
-    # Option de secours si les secrets ne sont pas définis
-    SUPABASE_URL = "https://jwqaspdomehuzqwvflri.supabase.co"
-    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3cWFzcGRvbWVodXpxd3ZmbHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MzM2MzEsImV4cCI6MjEwMjIwOTYzMX0.NJlzUJpdZ0WhFBMJdAftZNms_dZ5-nmEYAlB1p_B7lE"
+    SUPABASE_URL = "https://votre-id-projet.supabase.co"
+    SUPABASE_KEY = "votre-cle-anon"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+st.set_page_config(page_title="Gestionnaire de Menus", layout="wide")
+st.title("🍽️ Planificateur de Menus & PDF")
 
 # --- CHARGEMENT DES DONNÉES ---
 @st.cache_data(ttl=30)
 def load_recipes():
-    res = supabase.table("recipes").select("*").execute()
-    return res.data or []
+    try:
+        res = supabase.table("recipes").select("id, name").execute()
+        return res.data or []
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des recettes : {e}")
+        return []
 
 @st.cache_data(ttl=30)
 def load_ingredients():
-    res = supabase.table("ingredients").select("*").order("name").execute()
-    return res.data or []
+    try:
+        res = supabase.table("ingredients").select("id, name").execute()
+        return res.data or []
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des ingrédients : {e}")
+        return []
 
 @st.cache_data(ttl=30)
 def load_planned_meals():
-    res = supabase.table("planned_meals").select("*, recipes(title), ingredients(name)").execute()
-    return res.data or []
+    try:
+        res = supabase.table("planned_meals").select("*, recipes(name), ingredients(name)").execute()
+        return res.data or []
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des repas planifiés : {e}")
+        return []
 
 # --- CALCUL DES DATES DU MENU ---
 col_date, _ = st.columns([1, 2])
@@ -53,7 +66,7 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
-                st.error("Cet ingrédient existe déjà ou une erreur est survenue.")
+                st.error(f"Impossible d'ajouter cet ingrédient : {e}")
         else:
             st.warning("Veuillez saisir un nom.")
 
@@ -66,8 +79,9 @@ meal_types = ["Midi", "Soir"]
 recipes = load_recipes()
 ingredients = load_ingredients()
 
-recipe_map = {r["title"]: r["id"] for r in recipes}
-ingredient_map = {i["name"]: i["id"] for i in ingredients}
+# Cartographie avec la colonne "name"
+recipe_map = {r["name"]: r["id"] for r in recipes if r and "name" in r}
+ingredient_map = {i["name"]: i["id"] for i in ingredients if i and "name" in i}
 
 with st.form("add_meal_form"):
     c1, c2, c3, c4 = st.columns([2, 2, 3, 4])
@@ -80,9 +94,11 @@ with st.form("add_meal_form"):
         source_type = st.radio("Type de repas", ["Recette", "Ingrédient simple"], horizontal=True)
     with c4:
         if source_type == "Recette":
-            chosen_item = st.selectbox("Choisir la recette", ["-- Aucune --"] + list(recipe_map.keys()))
+            recipe_names = ["-- Aucune --"] + sorted(list(recipe_map.keys()))
+            chosen_item = st.selectbox("Choisir la recette", recipe_names)
         else:
-            chosen_item = st.selectbox("Choisir l'ingrédient", ["-- Aucun --"] + list(ingredient_map.keys()))
+            ingredient_names = ["-- Aucun --"] + sorted(list(ingredient_map.keys()))
+            chosen_item = st.selectbox("Choisir l'ingrédient", ingredient_names)
 
     submit_meal = st.form_submit_button("Affecter au menu")
 
@@ -96,19 +112,22 @@ if submit_meal:
         ingredient_id = ingredient_map.get(chosen_item)
 
     if recipe_id or ingredient_id:
-        # Supprime le repas existant pour ce créneau
-        supabase.table("planned_meals").delete().eq("day", selected_day).eq("meal_type", selected_type).execute()
-        # Insertion du nouveau repas
-        supabase.table("planned_meals").insert({
-            "day": selected_day,
-            "meal_type": selected_type,
-            "recipe_id": recipe_id,
-            "ingredient_id": ingredient_id
-        }).execute()
+        try:
+            # Supprime le repas existant pour ce créneau
+            supabase.table("planned_meals").delete().eq("day", selected_day).eq("meal_type", selected_type).execute()
+            # Insertion du nouveau repas
+            supabase.table("planned_meals").insert({
+                "day": selected_day,
+                "meal_type": selected_type,
+                "recipe_id": recipe_id,
+                "ingredient_id": ingredient_id
+            }).execute()
 
-        st.success(f"Repas mis à jour pour {selected_day} ({selected_type})")
-        st.cache_data.clear()
-        st.rerun()
+            st.success(f"Repas mis à jour pour {selected_day} ({selected_type})")
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erreur lors de la mise à jour : {e}")
 
 # --- TRAITEMENT DES DONNÉES PLANIFIÉES ET DE LA LISTE DE COURSES ---
 planned = load_planned_meals()
@@ -116,19 +135,19 @@ planning_dict = {}
 shopping_list = []
 
 for p in planned:
-    day = p["day"]
-    m_type = p["meal_type"]
+    if not isinstance(p, dict):
+        continue
+    day = p.get("day")
+    m_type = p.get("meal_type")
     
     if p.get("recipes"):
-        title = p["recipes"]["title"]
-        planning_dict[(day, m_type)] = title
-        # On peut aussi ajouter le titre de la recette ou ses sous-ingrédients
-        shopping_list.append(title)
+        item_name = p["recipes"].get("name", "Recette sans nom")
+        planning_dict[(day, m_type)] = item_name
+        shopping_list.append(item_name)
     elif p.get("ingredients"):
-        title = p["ingredients"]["name"]
-        planning_dict[(day, m_type)] = title
-        # L'ingrédient simple s'ajoute directement à la liste de courses !
-        shopping_list.append(title)
+        item_name = p["ingredients"].get("name", "Ingrédient sans nom")
+        planning_dict[(day, m_type)] = item_name
+        shopping_list.append(item_name)
 
 # Suppression des doublons pour la liste de courses
 shopping_list = sorted(list(set(shopping_list)))
@@ -145,7 +164,6 @@ class MenuPDF(FPDF):
 
     def header(self):
         self.set_font("Helvetica", "B", 15)
-        # Titre centré au sommet de la page
         self.cell(0, 10, f"Menu du {self.start_date_str} au {self.end_date_str}", border=0, new_x="LMARGIN", new_y="NEXT", align="C")
         self.ln(3)
 
@@ -162,7 +180,7 @@ def generate_pdf(planning, shopping, recurring, start_str, end_str):
     # -------------------------------------------------------------
     left_x = 10
     left_w = 120
-    day_h = total_h / 7  # Hauteur uniforme pour chaque jour (~36.4 mm)
+    day_h = total_h / 7
 
     for i, day in enumerate(days):
         y_pos = top_y + (i * day_h)
@@ -227,10 +245,8 @@ st.divider()
 if st.button("📄 Générer et ouvrir le PDF du menu", type="primary"):
     pdf_bytes = generate_pdf(planning_dict, shopping_list, recurring_items, start_str, end_str)
     
-    # Encode le PDF en base64
     b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
     
-    # Bouton HTML pour forcer l'ouverture dans un nouvel onglet sans téléchargement direct
     html_button = f'''
         <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" style="
             display: inline-block;
