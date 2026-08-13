@@ -258,6 +258,23 @@ def main():
         recipes = st.session_state.data.get('recipes', [])
         recipes_dict = {r['id']: r for r in recipes}
         
+        # Mapping des jours en français
+        JOURS_FR = {
+            'Monday': 'Lundi',
+            'Tuesday': 'Mardi',
+            'Wednesday': 'Mercredi',
+            'Thursday': 'Jeudi',
+            'Friday': 'Vendredi',
+            'Saturday': 'Samedi',
+            'Sunday': 'Dimanche'
+        }
+        
+        # Mapping des repas
+        REPAS_LABELS = {
+            'Midi': 'Déjeuner',
+            'Soir': 'Dîner'
+        }
+        
         if not recipes:
             st.warning("Créez d'abord des recettes dans l'onglet 'Créer / Éditer' !")
         else:
@@ -270,7 +287,8 @@ def main():
                     key="week_start_date"
                 )
             with col_info:
-                st.info(f"📅 Semaine du {start_date.strftime('%d/%m/%Y')} au {(start_date + timedelta(days=6)).strftime('%d/%m/%Y')}")
+                end_date = start_date + timedelta(days=6)
+                st.info(f"📅 Semaine du {start_date.strftime('%d/%m/%Y')} au {end_date.strftime('%d/%m/%Y')}")
             
             st.markdown("---")
             
@@ -278,42 +296,59 @@ def main():
             week_days = []
             for i in range(7):
                 current_date = start_date + timedelta(days=i)
+                english_day = current_date.strftime('%A')
+                french_day = JOURS_FR.get(english_day, english_day)
                 week_days.append({
                     'date': current_date,
-                    'day_name': current_date.strftime('%A').capitalize(),
+                    'day_name': french_day,
                     'day_number': current_date.strftime('%d/%m'),
                     'is_today': current_date == date.today()
                 })
             
             # Affichage de la semaine
             for day_info in week_days:
-                # Création d'une carte pour chaque jour
                 with st.container():
-                    # Style spécial pour aujourd'hui
+                    # En-tête du jour
                     if day_info['is_today']:
-                        day_label = f"### 📍 {day_info['day_name']} {day_info['day_number']} (Aujourd'hui)"
+                        st.markdown(f"### 📍 {day_info['day_name']} {day_info['day_number']} (Aujourd'hui)")
                     else:
-                        day_label = f"### 📅 {day_info['day_name']} {day_info['day_number']}"
-                    
-                    st.markdown(day_label)
+                        st.markdown(f"### 📅 {day_info['day_name']} {day_info['day_number']}")
                     
                     # Récupération des repas pour ce jour
                     day_meals = [pm for pm in planned_meals if pm['day'] == day_info['day_name']]
                     
-                    # Affichage des repas existants
+                    # Regrouper les repas par type (Midi/Soir)
+                    meals_by_type = defaultdict(list)
+                    for meal in day_meals:
+                        meals_by_type[meal['meal_type']].append(meal)
+                    
+                    # Affichage des repas regroupés
                     if day_meals:
-                        for meal in day_meals:
-                            rec_name = recipes_dict.get(meal['recipe_id'], {}).get('name', 'Inconnu')
-                            col_meal, col_del = st.columns([5, 1])
-                            with col_meal:
-                                st.markdown(f"**{meal['meal_type']}** : {rec_name} ({meal['servings']} pers.)")
-                            with col_del:
-                                if st.button("❌", key=f"del_meal_{meal['id']}", help="Supprimer"):
-                                    try:
-                                        supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
-                                        refresh_data()
-                                    except Exception as e:
-                                        st.error(f"Erreur : {e}")
+                        for meal_type in REPAS:  # Garder l'ordre : Déjeuner puis Dîner
+                            if meal_type in meals_by_type:
+                                meals = meals_by_type[meal_type]
+                                label = REPAS_LABELS.get(meal_type, meal_type)
+                                
+                                # Calculer le nombre de personnes (prendre le max si différent)
+                                servings_list = [meal['servings'] for meal in meals]
+                                servings = max(servings_list) if servings_list else 1
+                                
+                                # Afficher l'en-tête du type de repas
+                                st.markdown(f"**{label} ({servings}p) :**")
+                                
+                                # Afficher chaque recette en retrait
+                                for meal in meals:
+                                    rec_name = recipes_dict.get(meal['recipe_id'], {}).get('name', 'Inconnu')
+                                    col_recipe, col_del = st.columns([8, 1])
+                                    with col_recipe:
+                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{rec_name}")
+                                    with col_del:
+                                        if st.button("❌", key=f"del_meal_{meal['id']}", help="Supprimer"):
+                                            try:
+                                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                                                refresh_data()
+                                            except Exception as e:
+                                                st.error(f"Erreur : {e}")
                     else:
                         st.caption("Aucun repas planifié")
                     
@@ -324,6 +359,7 @@ def main():
                             meal_type = st.selectbox(
                                 "Repas",
                                 REPAS,
+                                format_func=lambda x: REPAS_LABELS.get(x, x),
                                 key=f"meal_type_{day_info['day_name']}_{day_info['day_number']}"
                             )
                         with col_recipe:
