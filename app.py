@@ -225,7 +225,7 @@ with tab_planning:
     # Chargement et structuration des repas planifiés
     planned = load_planned_meals()
     planning_data = {}  # Clé: (jour, meal_type) -> Liste d'objets
-    shopping_list = []
+    shopping_dict = {}  # Dictionnaire pour cumuler les portions
 
     for p in planned:
         if not isinstance(p, dict):
@@ -250,9 +250,16 @@ with tab_planning:
                 "name": item_name,
                 "persons": persons
             })
-            shopping_list.append(item_name)
+            
+            # --- AJOUT ET CUMUL POUR LA LISTE DE COURSES ---
+            if item_name not in shopping_dict:
+                shopping_dict[item_name] = 0
+            shopping_dict[item_name] += persons
 
-    shopping_list = sorted(list(set(shopping_list)))
+    # Formatage de la liste de courses finale : "Nom (Xp)"
+    shopping_list = [f"{name} ({total}p)" for name, total in shopping_dict.items()]
+    shopping_list.sort() # Tri alphabétique
+    
     recurring_items = load_recurring_items()
 
     # Option de réinitialisation globale
