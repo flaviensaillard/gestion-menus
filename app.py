@@ -5,12 +5,16 @@ from fpdf import FPDF
 from supabase import create_client, Client
 
 # --- CONFIGURATION SUPABASE ---
-SUPABASE_URL = "TON_URL_SUPABASE"
-SUPABASE_KEY = "TA_CLE_SUPABASE"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# --- CONFIGURATION SUPABASE ---
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+except KeyError:
+    # Option de secours si les secrets ne sont pas définis
+    SUPABASE_URL = "https://ton-id-projet.supabase.co"
+    SUPABASE_KEY = "ta-cle-api-anon"
 
-st.set_page_config(page_title="Gestionnaire de Menus", layout="wide")
-st.title("🍽️ Planificateur de Menus & PDF")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- CHARGEMENT DES DONNÉES ---
 @st.cache_data(ttl=30)
