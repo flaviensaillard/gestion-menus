@@ -15,7 +15,10 @@ except KeyError:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="Gestionnaire de Menus", layout="wide", page_icon="🍽️")
-st.title("🍽️ Gestionnaire Complet de Menus")
+st.title("🍽️ Planificateur de Menus & PDF")
+
+# --- LISTE DES JOURS DU SAMEDI AU VENDREDI ---
+DAYS = ["Samedi", "Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"]
 
 # --- FONCTIONS DE CHARGEMENT DES DONNÉES ---
 @st.cache_data(ttl=30)
@@ -62,7 +65,7 @@ class MenuPDF(FPDF):
         self.cell(0, 10, f"Menu du {self.start_date_str} au {self.end_date_str}", border=0, new_x="LMARGIN", new_y="NEXT", align="C")
         self.ln(3)
 
-def generate_pdf(planning, shopping, recurring, days, start_str, end_str):
+def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
     pdf = MenuPDF(start_str, end_str)
     pdf.add_page()
     pdf.set_auto_page_break(auto=False)
@@ -75,7 +78,7 @@ def generate_pdf(planning, shopping, recurring, days, start_str, end_str):
     left_w = 120
     day_h = total_h / 7
 
-    for i, day in enumerate(days):
+    for i, day in enumerate(days_list):
         y_pos = top_y + (i * day_h)
         
         pdf.rect(left_x, y_pos, left_w, day_h - 2)
@@ -141,15 +144,16 @@ tab_planning, tab_recipes, tab_ingredients, tab_recurring = st.tabs([
 with tab_planning:
     col_date, _ = st.columns([1, 2])
     with col_date:
-        start_date = st.date_input("Date de début du menu", datetime.date.today(), key="start_date_picker")
-    end_date = start_date + datetime.timedelta(days=7)
+        start_date = st.date_input("Date du samedi (début du menu)", datetime.date.today(), key="start_date_picker")
+    
+    # Fin du menu le vendredi (6 jours plus tard)
+    end_date = start_date + datetime.timedelta(days=6)
 
     start_str = start_date.strftime("%d/%m/%Y")
     end_str = end_date.strftime("%d/%m/%Y")
 
-    st.subheader("📌 Planification de la semaine")
+    st.subheader(f"📌 Planification de la semaine ({start_str} au {end_str})")
 
-    days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
     meal_types = ["Midi", "Soir"]
 
     recipes = load_recipes()
@@ -161,7 +165,7 @@ with tab_planning:
     with st.form("add_meal_form"):
         c1, c2, c3, c4 = st.columns([2, 2, 3, 4])
         with c1:
-            selected_day = st.selectbox("Jour", days)
+            selected_day = st.selectbox("Jour", DAYS)
         with c2:
             selected_type = st.selectbox("Repas", meal_types)
         with c3:
@@ -195,7 +199,7 @@ with tab_planning:
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour : {e}")
 
-    # Récupération et préparation des données pour le PDF
+    # Récupération des données planifiées
     planned = load_planned_meals()
     planning_dict = {}
     shopping_list = []
@@ -221,7 +225,7 @@ with tab_planning:
     st.divider()
 
     if st.button("📄 Générer et ouvrir le PDF du menu", type="primary"):
-        pdf_bytes = generate_pdf(planning_dict, shopping_list, recurring_items, days, start_str, end_str)
+        pdf_bytes = generate_pdf(planning_dict, shopping_list, recurring_items, DAYS, start_str, end_str)
         b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
         
         html_button = f'''
