@@ -20,6 +20,25 @@ st.title("🍽️ Planificateur de Menus & PDF")
 # --- LISTE DES JOURS DU SAMEDI AU VENDREDI ---
 DAYS = ["Samedi", "Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"]
 
+# --- FONCTION DE NETTOYAGE UNICODE POUR FPDF ---
+def clean_pdf_text(text: str) -> str:
+    """Nettoie le texte pour éviter les erreurs d'encodage FPDF avec Helvetica."""
+    if not text:
+        return ""
+    # Remplace les puces et guillemets spéciaux
+    replacements = {
+        "•": "-",
+        "’": "'",
+        "“": '"',
+        "”": '"',
+        "–": "-",
+        "—": "-"
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    # Convertit en Latin-1 en ignorant les caractères incompatibles
+    return text.encode("latin-1", "replace").decode("latin-1")
+
 # --- FONCTIONS DE CHARGEMENT DES DONNÉES ---
 @st.cache_data(ttl=30)
 def load_recipes():
@@ -62,7 +81,7 @@ class MenuPDF(FPDF):
 
     def header(self):
         self.set_font("Helvetica", "B", 15)
-        self.cell(0, 10, f"Menu du {self.start_date_str} au {self.end_date_str}", border=0, new_x="LMARGIN", new_y="NEXT", align="C")
+        self.cell(0, 10, clean_pdf_text(f"Menu du {self.start_date_str} au {self.end_date_str}"), border=0, new_x="LMARGIN", new_y="NEXT", align="C")
         self.ln(3)
 
 def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
@@ -85,11 +104,11 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
         
         pdf.set_xy(left_x + 3, y_pos + 2)
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(left_w - 6, 5, day)
+        pdf.cell(left_w - 6, 5, clean_pdf_text(day))
 
         pdf.set_font("Helvetica", "", 9)
-        midi_txt = planning.get((day, "Midi"), "-")
-        soir_txt = planning.get((day, "Soir"), "-")
+        midi_txt = clean_pdf_text(planning.get((day, "Midi"), "-"))
+        soir_txt = clean_pdf_text(planning.get((day, "Soir"), "-"))
 
         pdf.set_xy(left_x + 5, y_pos + 8)
         pdf.multi_cell(left_w - 10, 4.5, f"Midi : {midi_txt}")
@@ -111,7 +130,7 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
     
     pdf.set_font("Helvetica", "", 9)
     pdf.set_xy(right_x + 3, top_y + 10)
-    courses_txt = "\n".join([f"• {item}" for item in shopping]) if shopping else "Aucun article"
+    courses_txt = "\n".join([f"- {clean_pdf_text(item)}" for item in shopping]) if shopping else "Aucun article"
     pdf.multi_cell(right_w - 6, 5, courses_txt)
 
     # 2. Produits récurrents
@@ -125,7 +144,7 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
 
     pdf.set_font("Helvetica", "", 9)
     pdf.set_xy(right_x + 3, rec_y + 10)
-    recurring_txt = "\n".join([f"• {item}" for item in recurring]) if recurring else "Aucun produit"
+    recurring_txt = "\n".join([f"- {clean_pdf_text(item)}" for item in recurring]) if recurring else "Aucun produit"
     pdf.multi_cell(right_w - 6, 5, recurring_txt)
 
     return bytes(pdf.output())
@@ -158,7 +177,7 @@ with tab_planning:
     recipe_map = {r["name"]: r["id"] for r in recipes if r and "name" in r}
     ingredient_map = {i["name"]: i["id"] for i in ingredients if i and "name" in i}
 
-    # Chargement et structuration des repas planifiés (plusieurs éléments par repas autorisés)
+    # Chargement et structuration des repas planifiés
     planned = load_planned_meals()
     planning_data = {}  # Clé: (jour, meal_type) -> Liste d'objets
     shopping_list = []
@@ -274,7 +293,6 @@ with tab_planning:
 
                     if recipe_id or ingredient_id:
                         try:
-                            # On ajoute le nouvel élément sans supprimer les anciens !
                             supabase.table("planned_meals").insert({
                                 "day": day,
                                 "meal_type": m_type,
@@ -295,7 +313,6 @@ with tab_planning:
     # --- GÉNÉRATION DU PDF ---
     pdf_planning_dict = {}
     for (d, mt), items_list in planning_data.items():
-        # Combine plusieurs plats d'un même repas avec des '+'
         formatted_list = [f"{it['name']} ({it['persons']}p)" for it in items_list]
         pdf_planning_dict[(d, mt)] = " + ".join(formatted_list)
 
