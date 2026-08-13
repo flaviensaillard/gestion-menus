@@ -131,7 +131,6 @@ with tab_recipes:
                     st.subheader(f"📖 {recipe['name']}")
                     base_servings = recipe["base_servings"]
                     
-                    # Sélecteur dynamique du nombre de convives
                     target_servings = st.number_input(
                         "Nombre de personnes pour ce repas", 
                         min_value=1, 
@@ -148,7 +147,6 @@ with tab_recipes:
                 with col_rec_2:
                     st.subheader("🛒 Ingrédients nécessaires")
                     
-                    # Chargement des ingrédients de la recette avec jointure
                     rec_ing_resp = supabase.table("recipe_ingredients")\
                         .select("quantity, ingredients(name, unit)")\
                         .eq("recipe_id", recipe["id"]).execute()
@@ -161,7 +159,6 @@ with tab_recipes:
                         for item in rec_ingredients:
                             ing_info = item["ingredients"]
                             qty_calculated = round(item["quantity"] * ratio, 2)
-                            # Formatage propre sans décimale inutile
                             qty_display = int(qty_calculated) if qty_calculated.is_integer() else qty_calculated
                             st.write(f"• **{ing_info['name']}** : {qty_display} {ing_info['unit']}")
                 
@@ -206,7 +203,7 @@ with tab_recipes:
 
         # --- GÉRER LES INGRÉDIENTS D'UNE RECETTE EXISTANTE ---
         with col_manage:
-            st.subheader("⚙️ Modifier une recette & ses ingrédients")
+            st.subheader("⚙️ Modifier / Dupliquer une recette")
             
             try:
                 recipes_resp = supabase.table("recipes").select("*").order("name").execute()
@@ -220,7 +217,7 @@ with tab_recipes:
                     st.warning("Attention : Aucun ingrédient dans la base. Veuillez en créer dans le 1er onglet !")
                 else:
                     edit_recipe_options = {r["name"]: r for r in all_recipes}
-                    selected_edit_name = st.selectbox("Sélectionner la recette à éditer", list(edit_recipe_options.keys()))
+                    selected_edit_name = st.selectbox("Sélectionner la recette à gérer", list(edit_recipe_options.keys()))
                     target_recipe = edit_recipe_options[selected_edit_name]
                     
                     # Formulaire de modification de l'en-tête de la recette
@@ -239,9 +236,49 @@ with tab_recipes:
                                 st.success("En-tête de recette mis à jour !")
                                 st.rerun()
 
+                    # --- DUPLICATION DE RECETTE ---
+                    with st.expander("📋 Dupliquer cette recette"):
+                        dup_name = st.text_input("Nom de la copie", value=f"{target_recipe['name']} (Copie)")
+                        if st.button("Dupliquer maintenant", key="btn_dup_recipe"):
+                            if not dup_name.strip():
+                                st.error("Le nom ne peut pas être vide.")
+                            else:
+                                try:
+                                    # 1. Création de la recette
+                                    new_rec_resp = supabase.table("recipes").insert({
+                                        "name": dup_name.strip().capitalize(),
+                                        "base_servings": target_recipe["base_servings"],
+                                        "instructions": target_recipe["instructions"]
+                                    }).execute()
+                                    
+                                    new_recipe_id = new_rec_resp.data[0]["id"]
+                                    
+                                    # 2. Récupération des ingrédients originaux
+                                    orig_ing_resp = supabase.table("recipe_ingredients")\
+                                        .select("ingredient_id, quantity")\
+                                        .eq("recipe_id", target_recipe["id"]).execute()
+                                    
+                                    orig_ings = orig_ing_resp.data
+                                    
+                                    # 3. Copie des ingrédients vers la nouvelle recette
+                                    if orig_ings:
+                                        new_ings_data = [
+                                            {
+                                                "recipe_id": new_recipe_id,
+                                                "ingredient_id": item["ingredient_id"],
+                                                "quantity": item["quantity"]
+                                            }
+                                            for item in orig_ings
+                                        ]
+                                        supabase.table("recipe_ingredients").insert(new_ings_data).execute()
+                                    
+                                    st.success(f"Recette dupliquée sous le nom '{dup_name}' !")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erreur lors de la duplication : {e}")
+
                     st.markdown("##### Ingrédients de la recette")
                     
-                    # Récupérer les ingrédients déjà dans cette recette
                     curr_ing_resp = supabase.table("recipe_ingredients")\
                         .select("id, quantity, ingredient_id, ingredients(name, unit)")\
                         .eq("recipe_id", target_recipe["id"]).execute()
@@ -259,7 +296,6 @@ with tab_recipes:
                     else:
                         st.caption("Cette recette n'a pas encore d'ingrédients.")
 
-                    # Formulaire d'ajout d'un ingrédient dans la recette
                     st.markdown("---")
                     st.markdown("**Ajouter un ingrédient à cette recette :**")
                     
@@ -283,7 +319,6 @@ with tab_recipes:
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-                    # Suppression définitive de la recette
                     with st.expander("🗑️ Supprimer toute la recette"):
                         if st.button("Supprimer cette recette définitivement", type="primary", key="btn_del_recipe"):
                             supabase.table("recipes").delete().eq("id", target_recipe["id"]).execute()
