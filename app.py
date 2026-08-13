@@ -71,7 +71,7 @@ def load_planned_meals():
     except Exception:
         return []
 
-# --- GÉNÉRATEUR PDF AMÉLIORÉ (FPDF2) ---
+# --- GÉNÉRATEUR PDF (COMPATIBLE TOUTES VERSIONS FPDF) ---
 class MenuPDF(FPDF):
     def __init__(self, start_date_str, end_date_str):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -81,7 +81,7 @@ class MenuPDF(FPDF):
     def header(self):
         # Bandeau de titre supérieur
         self.set_fill_color(46, 125, 50)  # Vert Forêt
-        self.rounded_rect(10, 8, 190, 14, 3, style="F")
+        self.rect(10, 8, 190, 14, style="F")
         
         self.set_text_color(255, 255, 255)
         self.set_font("Helvetica", "B", 12)
@@ -114,11 +114,11 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
         # Fond de la carte du jour
         pdf.set_fill_color(BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B)
         pdf.set_draw_color(BORDER_R, BORDER_G, BORDER_B)
-        pdf.rounded_rect(left_x, y_pos, left_w, day_h - 3, 2.5, style="DF")
+        pdf.rect(left_x, y_pos, left_w, day_h - 3, style="DF")
 
         # Bandeau du nom du jour
         pdf.set_fill_color(232, 245, 233)  # Vert pastel
-        pdf.rounded_rect(left_x, y_pos, left_w, 7, 2, style="FD")
+        pdf.rect(left_x, y_pos, left_w, 7, style="FD")
 
         pdf.set_xy(left_x + 4, y_pos + 1)
         pdf.set_font("Helvetica", "B", 10)
@@ -153,11 +153,11 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
     list_h = 140
     pdf.set_fill_color(BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B)
     pdf.set_draw_color(BORDER_R, BORDER_G, BORDER_B)
-    pdf.rounded_rect(right_x, top_y, right_w, list_h, 2.5, style="DF")
+    pdf.rect(right_x, top_y, right_w, list_h, style="DF")
 
     # En-tête Liste de courses
     pdf.set_fill_color(PRIMARY_R, PRIMARY_G, PRIMARY_B)
-    pdf.rounded_rect(right_x, top_y, right_w, 8, 2, style="F")
+    pdf.rect(right_x, top_y, right_w, 8, style="F")
     pdf.set_xy(right_x, top_y + 1)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(255, 255, 255)
@@ -175,11 +175,11 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
     rec_h = total_h - list_h - 4
     pdf.set_fill_color(BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B)
     pdf.set_draw_color(BORDER_R, BORDER_G, BORDER_B)
-    pdf.rounded_rect(right_x, rec_y, right_w, rec_h, 2.5, style="DF")
+    pdf.rect(right_x, rec_y, right_w, rec_h, style="DF")
 
     # En-tête Récurrents
     pdf.set_fill_color(100, 116, 139)  # Gris ardoise
-    pdf.rounded_rect(right_x, rec_y, right_w, 7, 2, style="F")
+    pdf.rect(right_x, rec_y, right_w, 7, style="F")
     pdf.set_xy(right_x, rec_y + 1)
     pdf.set_font("Helvetica", "B", 9.5)
     pdf.set_text_color(255, 255, 255)
