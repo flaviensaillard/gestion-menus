@@ -606,41 +606,127 @@ def main():
                         
                         st.markdown("---")
                         
-                        # Ajout d'un ingrédient
-                        st.markdown("**Ajouter un ingrédient :**")
+                        # Ajout d'ingrédients avec tableau dynamique
+                        st.markdown("**Ajouter des ingrédients :**")
                         
                         existing_ings = [ri['ingredient_id'] for ri in rec_ings]
                         available_ings = [i for i in ingredients if i['id'] not in existing_ings]
                         
                         if available_ings:
-                            ing_options = {i['name']: i for i in available_ings}
-                            selected_ing_name = st.selectbox(
-                                "Ingrédient", 
-                                list(ing_options.keys()),
-                                key=f"select_add_ing_{recipe['id']}"
-                            )
+                            # Initialisation de la liste des nouveaux ingrédients
+                            if f'new_ings_{recipe["id"]}' not in st.session_state:
+                                st.session_state[f'new_ings_{recipe["id"]}'] = [
+                                    {"ingredient": None, "quantity": 100.0, "unit": "g"}
+                                ]
                             
-                            selected_ing = ing_options[selected_ing_name]
+                            # Affichage du tableau dynamique
+                            for idx, row in enumerate(st.session_state[f'new_ings_{recipe["id"]}']):
+                                col1, col2, col3, col4 = st.columns([3, 1.5, 1.5, 0.5])
+                                
+                                with col1:
+                                    # Liste des ingrédients disponibles
+                                    ing_names = [i['name'] for i in available_ings]
+                                    # Ajouter les ingrédients déjà sélectionnés dans d'autres lignes
+                                    already_selected = [
+                                        r['ingredient'] for i, r in enumerate(st.session_state[f'new_ings_{recipe["id"]}']) 
+                                        if i != idx and r['ingredient']
+                                    ]
+                                    available_for_this_row = [n for n in ing_names if n not in already_selected]
+                                    
+                                    if row['ingredient'] and row['ingredient'] in available_for_this_row:
+                                        current_index = available_for_this_row.index(row['ingredient'])
+                                    elif row['ingredient']:
+                                        available_for_this_row.insert(0, row['ingredient'])
+                                        current_index = 0
+                                    else:
+                                        current_index = 0
+                                    
+                                    selected_ing = st.selectbox(
+                                        "Ingrédient",
+                                        available_for_this_row,
+                                        index=current_index,
+                                        key=f"new_ing_select_{recipe['id']}_{idx}",
+                                        label_visibility="collapsed"
+                                    )
+                                    st.session_state[f'new_ings_{recipe["id"]}'][idx]['ingredient'] = selected_ing
+                                
+                                with col2:
+                                    qty = st.number_input(
+                                        "Quantité",
+                                        min_value=0.1,
+                                        value=float(row['quantity']),
+                                        step=10.0,
+                                        key=f"new_ing_qty_{recipe['id']}_{idx}",
+                                        label_visibility="collapsed"
+                                    )
+                                    st.session_state[f'new_ings_{recipe["id"]}'][idx]['quantity'] = qty
+                                
+                                with col3:
+                                    # Déterminer l'unité par défaut de l'ingrédient sélectionné
+                                    if selected_ing:
+                                        ing_obj = next((i for i in available_ings if i['name'] == selected_ing), None)
+                                        default_unit = ing_obj['unit'] if ing_obj else "g"
+                                    else:
+                                        default_unit = row.get('unit', 'g')
+                                    
+                                    unit_index = UNITES.index(default_unit) if default_unit in UNITES else 0
+                                    selected_unit = st.selectbox(
+                                        "Unité",
+                                        UNITES,
+                                        index=unit_index,
+                                        key=f"new_ing_unit_{recipe['id']}_{idx}",
+                                        label_visibility="collapsed"
+                                    )
+                                    st.session_state[f'new_ings_{recipe["id"]}'][idx]['unit'] = selected_unit
+                                
+                                with col4:
+                                    # Bouton pour supprimer cette ligne
+                                    if len(st.session_state[f'new_ings_{recipe["id"]}']) > 1:
+                                        if st.button("❌", key=f"remove_new_ing_{recipe['id']}_{idx}", help="Supprimer cette ligne"):
+                                            st.session_state[f'new_ings_{recipe["id"]}'].pop(idx)
+                                            st.rerun()
                             
-                            qty = st.number_input(
-                                f"Quantité ({selected_ing['unit']})", 
-                                min_value=0.1, 
-                                value=100.0, 
-                                step=10.0,
-                                key=f"qty_add_ing_{recipe['id']}"
-                            )
+                            # Boutons d'action
+                            col_add_row, col_save_all = st.columns(2)
                             
-                            if st.button("➕ Ajouter", key=f"btn_add_ing_{recipe['id']}", use_container_width=True):
-                                try:
-                                    supabase.table("recipe_ingredients").insert({
-                                        "recipe_id": recipe['id'],
-                                        "ingredient_id": selected_ing['id'],
-                                        "quantity": qty
-                                    }).execute()
-                                    st.success("✅ Ingrédient ajouté !")
-                                    refresh_data()
-                                except Exception as e:
-                                    st.error(f"Erreur : {e}")
+                            with col_add_row:
+                                if st.button("➕ Nouvelle ligne", key=f"add_row_{recipe['id']}", use_container_width=True):
+                                    st.session_state[f'new_ings_{recipe["id"]}'].append(
+                                        {"ingredient": None, "quantity": 100.0, "unit": "g"}
+                                    )
+                                    st.rerun()
+                            
+                            with col_save_all:
+                                if st.button("💾 Ajouter tous", key=f"save_all_ings_{recipe['id']}", use_container_width=True, type="primary"):
+                                    try:
+                                        added_count = 0
+                                        for new_ing in st.session_state[f'new_ings_{recipe["id"]}']:
+                                            if new_ing['ingredient']:
+                                                # Trouver l'ingrédient dans la base
+                                                ing_obj = next(
+                                                    (i for i in available_ings if i['name'] == new_ing['ingredient']),
+                                                    None
+                                                )
+                                                if ing_obj:
+                                                    # Ajouter l'ingrédient à la recette
+                                                    supabase.table("recipe_ingredients").insert({
+                                                        "recipe_id": recipe['id'],
+                                                        "ingredient_id": ing_obj['id'],
+                                                        "quantity": new_ing['quantity']
+                                                    }).execute()
+                                                    added_count += 1
+                                        
+                                        if added_count > 0:
+                                            st.success(f"✅ {added_count} ingrédient(s) ajouté(s) !")
+                                            # Réinitialiser le tableau
+                                            st.session_state[f'new_ings_{recipe["id"]}'] = [
+                                                {"ingredient": None, "quantity": 100.0, "unit": "g"}
+                                            ]
+                                            refresh_data()
+                                        else:
+                                            st.warning("Sélectionnez au moins un ingrédient")
+                                    except Exception as e:
+                                        st.error(f"Erreur : {e}")
                         else:
                             st.info("Tous les ingrédients disponibles sont déjà dans cette recette")
 
