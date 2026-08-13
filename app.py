@@ -449,47 +449,161 @@ def main():
 
         # ==================== MODE CRÉATION ====================
         if mode == "➕ Créer une nouvelle recette":
-            with st.form("create_recipe_form"):
-                st.subheader("Nouvelle recette")
+            # Organisation en deux colonnes pour la création
+            col_left, col_right = st.columns([1, 1])
+            
+            with col_left:
+                st.markdown("### 📝 Informations de base")
                 
-                name = st.text_input("Nom de la recette *", placeholder="ex: Blanquette de veau")
-                
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    servings = st.number_input(
-                        "Nombre de personnes", 
-                        min_value=1, 
-                        value=4,
-                        help="Nombre de personnes pour lequel la recette est prévue"
-                    )
-                
+                name = st.text_input("Nom de la recette *", placeholder="ex: Blanquette de veau", key="create_recipe_name")
+                servings = st.number_input(
+                    "Nombre de personnes", 
+                    min_value=1, 
+                    value=4,
+                    help="Nombre de personnes pour lequel la recette est prévue",
+                    key="create_recipe_servings"
+                )
                 instructions = st.text_area(
                     "Instructions de préparation", 
                     height=200,
-                    placeholder="Étape 1 : ...\nÉtape 2 : ..."
+                    placeholder="Étape 1 : ...\nÉtape 2 : ...",
+                    key="create_recipe_instructions"
                 )
+            
+            with col_right:
+                st.markdown("### 🛒 Ingrédients de la recette")
                 
-                submitted = st.form_submit_button("✅ Créer la recette", use_container_width=True)
+                # Initialisation des ingrédients pour la nouvelle recette
+                if 'new_recipe_ings' not in st.session_state:
+                    st.session_state.new_recipe_ings = [
+                        {"ingredient": None, "quantity": 100.0, "unit": "g"}
+                    ]
                 
-                if submitted:
-                    if not name.strip():
-                        st.error("Le nom est obligatoire")
-                    else:
-                        try:
-                            result = supabase.table("recipes").insert({
-                                "name": name.strip().capitalize(),
-                                "base_servings": servings,
-                                "instructions": instructions
-                            }).execute()
+                if not ingredients:
+                    st.warning("Aucun ingrédient disponible. Créez d'abord des ingrédients !")
+                else:
+                    # Affichage du tableau dynamique d'ingrédients
+                    for idx, row in enumerate(st.session_state.new_recipe_ings):
+                        col1, col2, col3, col4 = st.columns([3, 1.5, 1.5, 0.5])
+                        
+                        with col1:
+                            # Liste des ingrédients disponibles
+                            ing_names = [i['name'] for i in ingredients]
+                            # Exclure les ingrédients déjà sélectionnés dans d'autres lignes
+                            already_selected = [
+                                r['ingredient'] for i, r in enumerate(st.session_state.new_recipe_ings) 
+                                if i != idx and r['ingredient']
+                            ]
+                            available_for_this_row = [n for n in ing_names if n not in already_selected]
                             
-                            if result.data:
-                                st.success(f"✅ Recette '{name}' créée !")
-                                st.info("💡 Vous pouvez maintenant ajouter des ingrédients dans le mode 'Éditer'")
-                                refresh_data()
+                            if row['ingredient'] and row['ingredient'] in available_for_this_row:
+                                current_index = available_for_this_row.index(row['ingredient'])
+                            elif row['ingredient']:
+                                available_for_this_row.insert(0, row['ingredient'])
+                                current_index = 0
                             else:
-                                st.error("Erreur lors de la création")
-                        except Exception as e:
-                            st.error(f"Erreur : {e}")
+                                current_index = 0
+                            
+                            selected_ing = st.selectbox(
+                                "Ingrédient",
+                                available_for_this_row,
+                                index=current_index,
+                                key=f"create_ing_select_{idx}",
+                                label_visibility="collapsed"
+                            )
+                            st.session_state.new_recipe_ings[idx]['ingredient'] = selected_ing
+                        
+                        with col2:
+                            qty = st.number_input(
+                                "Quantité",
+                                min_value=0.1,
+                                value=float(row['quantity']),
+                                step=10.0,
+                                key=f"create_ing_qty_{idx}",
+                                label_visibility="collapsed"
+                            )
+                            st.session_state.new_recipe_ings[idx]['quantity'] = qty
+                        
+                        with col3:
+                            # Déterminer l'unité par défaut
+                            if selected_ing:
+                                ing_obj = next((i for i in ingredients if i['name'] == selected_ing), None)
+                                default_unit = ing_obj['unit'] if ing_obj else "g"
+                            else:
+                                default_unit = row.get('unit', 'g')
+                            
+                            unit_index = UNITES.index(default_unit) if default_unit in UNITES else 0
+                            selected_unit = st.selectbox(
+                                "Unité",
+                                UNITES,
+                                index=unit_index,
+                                key=f"create_ing_unit_{idx}",
+                                label_visibility="collapsed"
+                            )
+                            st.session_state.new_recipe_ings[idx]['unit'] = selected_unit
+                        
+                        with col4:
+                            # Bouton pour supprimer cette ligne
+                            if len(st.session_state.new_recipe_ings) > 1:
+                                if st.button("❌", key=f"remove_create_ing_{idx}", help="Supprimer cette ligne"):
+                                    st.session_state.new_recipe_ings.pop(idx)
+                                    st.rerun()
+                    
+                    # Bouton pour ajouter une nouvelle ligne
+                    if st.button("➕ Nouvelle ligne", key="add_create_ing_row", use_container_width=True):
+                        st.session_state.new_recipe_ings.append(
+                            {"ingredient": None, "quantity": 100.0, "unit": "g"}
+                        )
+                        st.rerun()
+            
+            # Bouton de création en bas
+            st.markdown("---")
+            if st.button("✅ Créer la recette", key="create_recipe_btn", use_container_width=True, type="primary"):
+                if not name.strip():
+                    st.error("Le nom est obligatoire")
+                else:
+                    try:
+                        # Créer la recette
+                        result = supabase.table("recipes").insert({
+                            "name": name.strip().capitalize(),
+                            "base_servings": servings,
+                            "instructions": instructions
+                        }).execute()
+                        
+                        if result.data:
+                            new_recipe_id = result.data[0]['id']
+                            
+                            # Ajouter les ingrédients sélectionnés
+                            added_count = 0
+                            for new_ing in st.session_state.new_recipe_ings:
+                                if new_ing['ingredient']:
+                                    ing_obj = next(
+                                        (i for i in ingredients if i['name'] == new_ing['ingredient']),
+                                        None
+                                    )
+                                    if ing_obj:
+                                        supabase.table("recipe_ingredients").insert({
+                                            "recipe_id": new_recipe_id,
+                                            "ingredient_id": ing_obj['id'],
+                                            "quantity": new_ing['quantity']
+                                        }).execute()
+                                        added_count += 1
+                            
+                            # Message de succès
+                            success_msg = f"✅ Recette '{name}' créée avec {added_count} ingrédient(s) !"
+                            if added_count == 0:
+                                success_msg += "\n💡 Vous pourrez ajouter des ingrédients plus tard dans le mode 'Éditer'."
+                            st.success(success_msg)
+                            
+                            # Réinitialiser le formulaire
+                            st.session_state.new_recipe_ings = [
+                                {"ingredient": None, "quantity": 100.0, "unit": "g"}
+                            ]
+                            refresh_data()
+                        else:
+                            st.error("Erreur lors de la création")
+                    except Exception as e:
+                        st.error(f"Erreur : {e}")
 
         # ==================== MODE ÉDITION ====================
         else:
