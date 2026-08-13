@@ -226,9 +226,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             total_lines += max(len(schedule[day_name]['Midi']), 1)  # Plats déjeuner
             total_lines += 1  # Dîner (titre)
             total_lines += max(len(schedule[day_name]['Soir']), 1)  # Plats dîner
-            total_lines += 1  # Espacement
+            total_lines += 0.5  # Espacement
         
-        # Hauteur disponible pour le planning (en dessous du titre)
+        # Hauteur disponible pour le planning
         title_height = 15
         planning_title_height = 8
         available_planning_height = page_height - margin - title_height - planning_title_height - 3
@@ -236,35 +236,42 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         # Calculer la hauteur de ligne adaptative
         if total_lines > 0:
             line_height = available_planning_height / total_lines
-            # Limiter la hauteur de ligne
-            line_height = min(line_height, 6)
-            line_height = max(line_height, 3)
+            # Limiter la hauteur de ligne pour correspondre aux polices min/max
+            line_height = min(line_height, 10)  # Correspond à police 28
+            line_height = max(line_height, 5)   # Correspond à police 12
         else:
-            line_height = 6
+            line_height = 7
         
-        # Taille de police adaptative
-        font_size = line_height * 1.8
-        font_size = min(font_size, 11)
-        font_size = max(font_size, 6)
+        # Taille de police adaptative (entre 12 et 28)
+        font_size = line_height * 2.2
+        font_size = min(font_size, 28)  # Maximum 28
+        font_size = max(font_size, 12)  # Minimum 12
         
-        # ==================== EN-TÊTE (centré sur la partie gauche) ====================
-        pdf.set_font('Helvetica', 'B', 16)
+        # ==================== EN-TÊTE ====================
+        # Titre avec police adaptative (plus grand que le contenu)
+        title_font_size = min(font_size + 4, 28)
+        title_font_size = max(title_font_size, 16)
+        
+        pdf.set_font('Helvetica', 'B', title_font_size)
         pdf.set_xy(left_x, margin)
-        pdf.cell(left_width, 8, clean_pdf_str('Menus de la semaine'), align='C')
+        pdf.cell(left_width, title_font_size * 0.5, clean_pdf_str('Menus de la semaine'), align='C')
         
         if start_date:
             end_date = start_date + timedelta(days=6)
-            pdf.set_font('Helvetica', '', 10)
-            pdf.set_xy(left_x, margin + 8)
-            pdf.cell(left_width, 5, clean_pdf_str(f'Du {start_date.strftime("%d/%m/%Y")} au {end_date.strftime("%d/%m/%Y")}'), align='C')
+            pdf.set_font('Helvetica', '', max(font_size - 2, 10))
+            pdf.set_xy(left_x, margin + title_font_size * 0.5)
+            pdf.cell(left_width, font_size * 0.4, clean_pdf_str(f'Du {start_date.strftime("%d/%m/%Y")} au {end_date.strftime("%d/%m/%Y")}'), align='C')
         
-        y_start = margin + title_height
+        y_start = margin + title_font_size * 0.5 + font_size * 0.4 + 3
         
         # ==================== COLONNE GAUCHE : PLANNING ====================
         # Cadre vert pastel
+        section_title_size = min(font_size + 2, 28)
+        section_title_size = max(section_title_size, 14)
+        
         pdf.set_fill_color(*green_bg)
         pdf.set_xy(left_x, y_start)
-        pdf.set_font('Helvetica', 'B', 12)
+        pdf.set_font('Helvetica', 'B', section_title_size)
         pdf.cell(left_width, planning_title_height, 'Planning des Repas', ln=True, fill=True, align='C')
         
         y = pdf.get_y() + 2
@@ -295,31 +302,31 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             pdf.rect(left_x, y, left_width, block_height - 1, 'F')
             
             # En-tête du jour
-            pdf.set_xy(left_x + 3, y + (line_height * 0.3))
-            pdf.set_font('Helvetica', 'B', font_size + 1)
+            pdf.set_xy(left_x + 3, y + (line_height * 0.2))
+            pdf.set_font('Helvetica', 'B', font_size)
             if day_number:
                 day_label = f"{day_name} {day_number}"
             else:
                 day_label = day_name
             pdf.cell(left_width - 6, line_height, clean_pdf_str(day_label), border=0)
             
-            y += line_height + 0.5
+            y += line_height
             
             # Déjeuner
             pdf.set_xy(left_x + 5, y)
             pdf.set_font('Helvetica', 'B', font_size)
-            pdf.cell(25, line_height, 'Déjeuner :', border=0)
+            pdf.cell(28, line_height, 'Déjeuner :', border=0)
             
             if midi_items:
                 pdf.set_font('Helvetica', '', font_size)
                 for item in midi_items:
-                    pdf.set_xy(left_x + 30, y)
-                    pdf.cell(left_width - 35, line_height, clean_pdf_str(item)[:55], border=0, ln=True)
+                    pdf.set_xy(left_x + 33, y)
+                    pdf.cell(left_width - 38, line_height, clean_pdf_str(item)[:55], border=0, ln=True)
                     y += line_height
             else:
                 pdf.set_font('Helvetica', 'I', font_size)
-                pdf.set_xy(left_x + 30, y)
-                pdf.cell(left_width - 35, line_height, '-', border=0, ln=True)
+                pdf.set_xy(left_x + 33, y)
+                pdf.cell(left_width - 38, line_height, '-', border=0, ln=True)
                 y += line_height
             
             y += 0.5
@@ -327,21 +334,21 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             # Dîner
             pdf.set_xy(left_x + 5, y)
             pdf.set_font('Helvetica', 'B', font_size)
-            pdf.cell(25, line_height, 'Dîner :', border=0)
+            pdf.cell(28, line_height, 'Dîner :', border=0)
             
             if soir_items:
                 pdf.set_font('Helvetica', '', font_size)
                 for item in soir_items:
-                    pdf.set_xy(left_x + 30, y)
-                    pdf.cell(left_width - 35, line_height, clean_pdf_str(item)[:55], border=0, ln=True)
+                    pdf.set_xy(left_x + 33, y)
+                    pdf.cell(left_width - 38, line_height, clean_pdf_str(item)[:55], border=0, ln=True)
                     y += line_height
             else:
                 pdf.set_font('Helvetica', 'I', font_size)
-                pdf.set_xy(left_x + 30, y)
-                pdf.cell(left_width - 35, line_height, '-', border=0, ln=True)
+                pdf.set_xy(left_x + 33, y)
+                pdf.cell(left_width - 38, line_height, '-', border=0, ln=True)
                 y += line_height
             
-            y += 1
+            y += line_height * 0.5
         
         # ==================== COLONNE DROITE : LISTE DE COURSES ====================
         y_right = margin  # Commencer au sommet de la page
@@ -349,7 +356,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         # Cadre orange pastel
         pdf.set_fill_color(*orange_bg)
         pdf.set_xy(right_x, y_right)
-        pdf.set_font('Helvetica', 'B', 12)
+        pdf.set_font('Helvetica', 'B', section_title_size)
         pdf.cell(right_width, 8, 'Liste de Courses', ln=True, fill=True, align='C')
         
         y_right += 10
@@ -362,22 +369,22 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         total_items = sum(len(items) for items in by_cat.values())
         total_categories = len(by_cat)
         
-        # Hauteur disponible pour la liste (en gardant de la place pour produits récurrents)
-        recurrent_height = len(recurrent_items) * 4 + 12 if recurrent_items else 0
+        # Hauteur disponible pour la liste
+        recurrent_height = len(recurrent_items) * line_height + 12 if recurrent_items else 0
         available_courses_height = page_height - margin - y_right - recurrent_height - 5
         
         # Calculer la hauteur de ligne pour la liste
         total_course_lines = total_items + total_categories * 2
         if total_course_lines > 0:
             course_line_height = available_courses_height / total_course_lines
-            course_line_height = min(course_line_height, 5)
-            course_line_height = max(course_line_height, 3)
+            course_line_height = min(course_line_height, 10)
+            course_line_height = max(course_line_height, 5)
         else:
-            course_line_height = 4
+            course_line_height = 7
         
-        course_font_size = course_line_height * 1.8
-        course_font_size = min(course_font_size, 10)
-        course_font_size = max(course_font_size, 6)
+        course_font_size = course_line_height * 2.2
+        course_font_size = min(course_font_size, 28)
+        course_font_size = max(course_font_size, 12)
         
         if not by_cat:
             pdf.set_xy(right_x + 3, y_right)
@@ -399,13 +406,13 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                         qty_str = format_quantity(it['qty'])
                         
                         # Case à cocher
-                        checkbox_size = min(3, course_line_height * 0.7)
+                        checkbox_size = min(3, course_line_height * 0.5)
                         pdf.set_draw_color(100, 100, 100)
-                        pdf.rect(right_x + 3, y_right, checkbox_size, checkbox_size, 'D')
+                        pdf.rect(right_x + 3, y_right + (course_line_height - checkbox_size) / 2, checkbox_size, checkbox_size, 'D')
                         
                         # Texte de l'item
                         line = f"{it['name']} : {qty_str} {it['unit']}"
-                        pdf.set_xy(right_x + 7, y_right - 0.3)
+                        pdf.set_xy(right_x + 7, y_right)
                         pdf.cell(right_width - 10, course_line_height, clean_pdf_str(line), ln=True)
                         y_right += course_line_height
                     
@@ -418,7 +425,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             # Cadre gris très clair
             pdf.set_fill_color(*gray_bg)
             pdf.set_xy(right_x, y_right)
-            pdf.set_font('Helvetica', 'B', 11)
+            pdf.set_font('Helvetica', 'B', min(section_title_size, 16))
             pdf.cell(right_width, 7, 'Produits récurrents', ln=True, fill=True, align='C')
             y_right += 9
             
@@ -428,12 +435,12 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     break
                 
                 # Case à cocher
-                checkbox_size = min(3, course_line_height * 0.7)
+                checkbox_size = min(3, course_line_height * 0.5)
                 pdf.set_draw_color(100, 100, 100)
-                pdf.rect(right_x + 3, y_right, checkbox_size, checkbox_size, 'D')
+                pdf.rect(right_x + 3, y_right + (course_line_height - checkbox_size) / 2, checkbox_size, checkbox_size, 'D')
                 
                 # Texte
-                pdf.set_xy(right_x + 7, y_right - 0.3)
+                pdf.set_xy(right_x + 7, y_right)
                 pdf.cell(right_width - 10, course_line_height, clean_pdf_str(rec['name']), ln=True)
                 y_right += course_line_height
 
