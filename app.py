@@ -48,7 +48,7 @@ def load_recurring_items():
 @st.cache_data(ttl=30)
 def load_planned_meals():
     try:
-        res = supabase.table("planned_meals").select("*, recipes(name), ingredients(name)").execute()
+        res = supabase.table("planned_meals").select("id, day, meal_type, nb_persons, recipes(name), ingredients(name)").execute()
         return res.data or []
     except Exception:
         return []
@@ -91,11 +91,11 @@ def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
         midi_txt = planning.get((day, "Midi"), "-")
         soir_txt = planning.get((day, "Soir"), "-")
 
-        pdf.set_xy(left_x + 5, y_pos + 9)
-        pdf.cell(left_w - 10, 5, f"Midi : {midi_txt}")
+        pdf.set_xy(left_x + 5, y_pos + 8)
+        pdf.multi_cell(left_w - 10, 4.5, f"Midi : {midi_txt}")
         
         pdf.set_xy(left_x + 5, y_pos + 16)
-        pdf.cell(left_w - 10, 5, f"Soir : {soir_txt}")
+        pdf.multi_cell(left_w - 10, 4.5, f"Soir : {soir_txt}")
 
     # PARTIE DROITE (1/3 de la largeur : 65 mm)
     right_x = 135
@@ -158,14 +158,15 @@ with tab_planning:
     recipe_map = {r["name"]: r["id"] for r in recipes if r and "name" in r}
     ingredient_map = {i["name"]: i["id"] for i in ingredients if i and "name" in i}
 
-    # Chargement et structuration des repas planifiés
+    # Chargement et structuration des repas planifiés (plusieurs éléments par repas autorisés)
     planned = load_planned_meals()
-    planning_data = {}
+    planning_data = {}  # Clé: (jour, meal_type) -> Liste d'objets
     shopping_list = []
 
     for p in planned:
         if not isinstance(p, dict):
             continue
+        item_id = p.get("id")
         day = p.get("day")
         m_type = p.get("meal_type")
         persons = p.get("nb_persons") or 4
@@ -177,10 +178,14 @@ with tab_planning:
             item_name = p["ingredients"].get("name")
             
         if item_name and day and m_type:
-            planning_data[(day, m_type)] = {
+            key = (day, m_type)
+            if key not in planning_data:
+                planning_data[key] = []
+            planning_data[key].append({
+                "id": item_id,
                 "name": item_name,
                 "persons": persons
-            }
+            })
             shopping_list.append(item_name)
 
     shopping_list = sorted(list(set(shopping_list)))
@@ -207,37 +212,39 @@ with tab_planning:
             # --- CADRE / BLOC MIDI ---
             with col_midi:
                 st.markdown("#### ☀️ Midi")
-                midi_item = planning_data.get((day, "Midi"))
-                if midi_item:
-                    c_txt, c_del = st.columns([4, 1])
-                    with c_txt:
-                        st.success(f"**{midi_item['name']}** ({midi_item['persons']} pers.)")
-                    with c_del:
-                        if st.button("🗑️", key=f"del_{day}_Midi", help=f"Supprimer le midi de {day}"):
-                            supabase.table("planned_meals").delete().eq("day", day).eq("meal_type", "Midi").execute()
-                            st.cache_data.clear()
-                            st.rerun()
+                midi_items = planning_data.get((day, "Midi"), [])
+                if midi_items:
+                    for item in midi_items:
+                        c_txt, c_del = st.columns([5, 1])
+                        with c_txt:
+                            st.write(f"• **{item['name']}** ({item['persons']} pers.)")
+                        with c_del:
+                            if st.button("🗑️", key=f"del_{item['id']}", help=f"Supprimer {item['name']}"):
+                                supabase.table("planned_meals").delete().eq("id", item["id"]).execute()
+                                st.cache_data.clear()
+                                st.rerun()
                 else:
-                    st.info("Aucun repas planifié")
+                    st.caption("Aucun élément")
 
             # --- CADRE / BLOC SOIR ---
             with col_soir:
                 st.markdown("#### 🌙 Soir")
-                soir_item = planning_data.get((day, "Soir"))
-                if soir_item:
-                    c_txt, c_del = st.columns([4, 1])
-                    with c_txt:
-                        st.success(f"**{soir_item['name']}** ({soir_item['persons']} pers.)")
-                    with c_del:
-                        if st.button("🗑️", key=f"del_{day}_Soir", help=f"Supprimer le soir de {day}"):
-                            supabase.table("planned_meals").delete().eq("day", day).eq("meal_type", "Soir").execute()
-                            st.cache_data.clear()
-                            st.rerun()
+                soir_items = planning_data.get((day, "Soir"), [])
+                if soir_items:
+                    for item in soir_items:
+                        c_txt, c_del = st.columns([5, 1])
+                        with c_txt:
+                            st.write(f"• **{item['name']}** ({item['persons']} pers.)")
+                        with c_del:
+                            if st.button("🗑️", key=f"del_{item['id']}", help=f"Supprimer {item['name']}"):
+                                supabase.table("planned_meals").delete().eq("id", item["id"]).execute()
+                                st.cache_data.clear()
+                                st.rerun()
                 else:
-                    st.info("Aucun repas planifié")
+                    st.caption("Aucun élément")
 
-            # --- FORMULAIRE D'AJOUT / MODIFICATION PROPRE À CE JOUR ---
-            with st.expander(f"➕ Planifier ou modifier un repas pour {day}"):
+            # --- FORMULAIRE D'AJOUT POUR CE JOUR ---
+            with st.expander(f"➕ Ajouter un élément au menu de {day}"):
                 source_type = st.radio(
                     "Élément à ajouter :",
                     ["Recette", "Ingrédient simple"],
@@ -259,7 +266,7 @@ with tab_planning:
                     with c3:
                         nb_pers = st.number_input("Pers.", min_value=1, max_value=20, value=4, step=1, key=f"np_{day}")
 
-                    submit_btn = st.form_submit_button(f"Enregistrer pour {day}")
+                    submit_btn = st.form_submit_button(f"Ajouter à {day}")
 
                 if submit_btn:
                     recipe_id = recipe_map.get(chosen_name) if source_type == "Recette" and chosen_name != "-- Aucune --" else None
@@ -267,9 +274,7 @@ with tab_planning:
 
                     if recipe_id or ingredient_id:
                         try:
-                            # Supprime l'ancien repas sur ce créneau s'il existe
-                            supabase.table("planned_meals").delete().eq("day", day).eq("meal_type", m_type).execute()
-                            # Insère le nouveau
+                            # On ajoute le nouvel élément sans supprimer les anciens !
                             supabase.table("planned_meals").insert({
                                 "day": day,
                                 "meal_type": m_type,
@@ -277,7 +282,7 @@ with tab_planning:
                                 "ingredient_id": ingredient_id,
                                 "nb_persons": nb_pers
                             }).execute()
-                            st.success(f"Repas enregistré pour {day} ({m_type}) !")
+                            st.success(f"Ajouté avec succès pour {day} ({m_type}) !")
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:
@@ -289,8 +294,10 @@ with tab_planning:
 
     # --- GÉNÉRATION DU PDF ---
     pdf_planning_dict = {}
-    for (d, mt), item in planning_data.items():
-        pdf_planning_dict[(d, mt)] = f"{item['name']} ({item['persons']} pers.)"
+    for (d, mt), items_list in planning_data.items():
+        # Combine plusieurs plats d'un même repas avec des '+'
+        formatted_list = [f"{it['name']} ({it['persons']}p)" for it in items_list]
+        pdf_planning_dict[(d, mt)] = " + ".join(formatted_list)
 
     if st.button("📄 Générer et ouvrir le PDF du menu", type="primary"):
         pdf_bytes = generate_pdf(pdf_planning_dict, shopping_list, recurring_items, DAYS, start_str, end_str)
@@ -402,4 +409,3 @@ with tab_recurring:
     curr_items = load_recurring_items()
     for item in curr_items:
         st.text(f"• {item}")
-    
