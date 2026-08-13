@@ -145,113 +145,198 @@ def get_display_name(recipe: Dict) -> str:
     """Retourne le nom d'affichage d'une recette (sans le préfixe [Ing])."""
     name = recipe.get('name', '')
     if name.startswith('[Ing] '):
-        return name[6:]  # Retirer "[Ing] "
+        return name[6:]
     return name
 
 # ------------------------------
 # GÉNÉRATION PDF
 # ------------------------------
 def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
-                 recurrent_items: List[Dict], recipes_dict: Dict) -> bytes:
+                 recurrent_items: List[Dict], recipes_dict: Dict, 
+                 start_date: date = None) -> bytes:
     """Génère un PDF A4 avec le menu et la liste de courses."""
     try:
         pdf = FPDF(format='A4', unit='mm')
-        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_auto_page_break(auto=True, margin=10)
         pdf.add_page()
 
+        # Largeurs des colonnes
+        left_width = 125
+        right_width = 65
+        margin_left = 10
+        
         # En-tête
-        pdf.set_font('Helvetica', 'B', 20)
-        pdf.cell(0, 15, clean_pdf_str('Menu de la Semaine'), ln=True, align='C')
-        pdf.set_font('Helvetica', 'I', 10)
+        pdf.set_font('Helvetica', 'B', 18)
+        pdf.cell(0, 12, clean_pdf_str('Menus de la semaine'), ln=True, align='C')
+        
+        if start_date:
+            end_date = start_date + timedelta(days=6)
+            pdf.set_font('Helvetica', 'I', 11)
+            pdf.cell(0, 7, clean_pdf_str(f'Période du {start_date.strftime("%d/%m/%Y")} au {end_date.strftime("%d/%m/%Y")}'), ln=True, align='C')
+        
+        pdf.set_font('Helvetica', 'I', 9)
         pdf.cell(0, 5, clean_pdf_str(f'Généré le {datetime.now().strftime("%d/%m/%Y")}'), ln=True, align='C')
         pdf.ln(5)
 
-        # Planning
-        pdf.set_font('Helvetica', 'B', 14)
+        y_start = pdf.get_y()
+        
+        # ==================== COLONNE GAUCHE (2/3) ====================
+        pdf.set_font('Helvetica', 'B', 13)
         pdf.set_fill_color(240, 240, 240)
-        pdf.cell(0, 10, '1. Planning des Repas', ln=True, fill=True)
-        pdf.ln(3)
+        pdf.set_x(margin_left)
+        pdf.cell(left_width, 9, 'Planning des Repas', ln=True, fill=True)
+        pdf.ln(2)
 
-        schedule = {d: {"Midi": [], "Soir": []} for d in JOURS}
-        for pm in planned_meals:
-            rec = recipes_dict.get(pm.get('recipe_id'))
-            if rec:
-                rec_name = get_display_name(rec)
-            else:
-                rec_name = 'Inconnu'
+        # Générer les 7 jours
+        if start_date:
+            week_days = []
+            for i in range(7):
+                current_date = start_date + timedelta(days=i)
+                english_day = current_date.strftime('%A')
+                french_day = JOURS_FR.get(english_day, english_day)
+                week_days.append({
+                    'date': current_date,
+                    'day_name': french_day,
+                    'day_number': current_date.strftime('%d/%m')
+                })
+        else:
+            week_days = [{'day_name': d, 'day_number': ''} for d in JOURS]
+
+        # Regrouper les repas
+        schedule = {}
+        for day_info in week_days:
+            day_name = day_info['day_name']
+            schedule[day_name] = {"Midi": [], "Soir": []}
             
-            d = pm.get('day')
-            m = pm.get('meal_type')
-            if d in schedule and m in schedule[d]:
-                schedule[d][m].append(rec_name)
+            for pm in planned_meals:
+                if pm.get('day') == day_name:
+                    rec = recipes_dict.get(pm.get('recipe_id'))
+                    if rec:
+                        rec_name = get_display_name(rec)
+                    else:
+                        rec_name = 'Inconnu'
+                    
+                    meal_type = pm.get('meal_type')
+                    if meal_type in schedule[day_name]:
+                        schedule[day_name][meal_type].append(rec_name)
 
-        pdf.set_font('Helvetica', 'B', 10)
-        pdf.cell(30, 8, clean_pdf_str('Jour'), border=1, fill=True)
-        pdf.cell(80, 8, clean_pdf_str('Déjeuner'), border=1, fill=True)
-        pdf.cell(80, 8, clean_pdf_str('Dîner'), border=1, ln=True, fill=True)
-
+        # Affichage des jours
         pdf.set_font('Helvetica', size=9)
-        for i, day in enumerate(JOURS):
+        
+        for i, day_info in enumerate(week_days):
+            day_name = day_info['day_name']
+            day_number = day_info['day_number']
+            
+            midi_items = schedule[day_name]['Midi']
+            soir_items = schedule[day_name]['Soir']
+            max_items = max(len(midi_items), len(soir_items), 1)
+            day_height = 7 + (max_items * 5)
+            
+            if pdf.get_y() + day_height > 280:
+                pdf.add_page()
+            
             if i % 2 == 0:
                 pdf.set_fill_color(250, 250, 250)
             else:
                 pdf.set_fill_color(240, 240, 240)
             
-            midi_text = ", ".join(schedule[day]['Midi']) if schedule[day]['Midi'] else "-"
-            soir_text = ", ".join(schedule[day]['Soir']) if schedule[day]['Soir'] else "-"
+            pdf.set_x(margin_left)
+            if day_number:
+                day_label = f"{day_name} {day_number}"
+            else:
+                day_label = day_name
             
-            pdf.cell(30, 7, clean_pdf_str(day), border=1, fill=True)
-            pdf.cell(80, 7, clean_pdf_str(midi_text)[:50], border=1, fill=True)
-            pdf.cell(80, 7, clean_pdf_str(soir_text)[:50], border=1, ln=True, fill=True)
+            pdf.set_font('Helvetica', 'B', 10)
+            pdf.cell(left_width, 7, clean_pdf_str(day_label), border=1, fill=True, ln=True)
+            
+            # Déjeuner
+            pdf.set_x(margin_left)
+            pdf.set_font('Helvetica', 'B', 8)
+            pdf.cell(30, 5, 'Déjeuner:', border=0)
+            
+            if midi_items:
+                pdf.set_font('Helvetica', size=8)
+                midi_text = ", ".join(midi_items)
+                pdf.cell(left_width - 30, 5, clean_pdf_str(midi_text)[:70], border=0, ln=True)
+            else:
+                pdf.set_font('Helvetica', 'I', 8)
+                pdf.cell(left_width - 30, 5, '-', border=0, ln=True)
+            
+            # Dîner
+            pdf.set_x(margin_left)
+            pdf.set_font('Helvetica', 'B', 8)
+            pdf.cell(30, 5, 'Dîner:', border=0)
+            
+            if soir_items:
+                pdf.set_font('Helvetica', size=8)
+                soir_text = ", ".join(soir_items)
+                pdf.cell(left_width - 30, 5, clean_pdf_str(soir_text)[:70], border=0, ln=True)
+            else:
+                pdf.set_font('Helvetica', 'I', 8)
+                pdf.cell(left_width - 30, 5, '-', border=0, ln=True)
+            
+            pdf.ln(2)
 
-        pdf.ln(8)
-        pdf.set_dash_pattern(dash=2, gap=2)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-        pdf.set_dash_pattern()
-        pdf.set_font('Helvetica', 'I', 8)
-        pdf.cell(0, 5, clean_pdf_str('- - - - - - - - - - Decouper ici - - - - - - - - - -'), ln=True, align='C')
-        pdf.ln(8)
-
-        # Liste de courses
-        pdf.set_font('Helvetica', 'B', 14)
-        pdf.cell(0, 10, '2. Liste de Courses', ln=True, fill=True)
-        pdf.ln(3)
+        # ==================== COLONNE DROITE (1/3) ====================
+        right_x = margin_left + left_width + 5
+        pdf.set_y(y_start)
+        pdf.set_x(right_x)
+        pdf.set_font('Helvetica', 'B', 13)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(right_width, 9, 'Liste de Courses', ln=True, fill=True)
+        pdf.ln(2)
 
         by_cat = defaultdict(list)
         for item in aggregated_items.values():
             by_cat[item.get('category', 'Autre')].append(item)
 
         if not by_cat:
-            pdf.set_font('Helvetica', 'I', 10)
-            pdf.cell(0, 5, 'Aucun article a acheter.', ln=True)
+            pdf.set_x(right_x)
+            pdf.set_font('Helvetica', 'I', 8)
+            pdf.cell(right_width, 5, 'Aucun article', ln=True)
         else:
             for cat in RAYONS:
                 if cat in by_cat:
-                    pdf.set_font('Helvetica', 'B', 11)
+                    if pdf.get_y() > 270:
+                        pdf.add_page()
+                        pdf.set_y(15)
+                    
+                    pdf.set_x(right_x)
+                    pdf.set_font('Helvetica', 'B', 9)
                     pdf.set_fill_color(230, 230, 230)
-                    pdf.cell(0, 7, clean_pdf_str(f'- {cat}'), ln=True, fill=True)
-                    pdf.set_font('Helvetica', size=9)
+                    pdf.cell(right_width, 6, clean_pdf_str(cat), ln=True, fill=True)
+                    
+                    pdf.set_font('Helvetica', size=8)
                     for it in by_cat[cat]:
+                        if pdf.get_y() > 270:
+                            pdf.add_page()
+                            pdf.set_y(15)
+                        
                         qty_str = format_quantity(it['qty'])
-                        line = f"   [  ] {it['name']} : {qty_str} {it['unit']}"
-                        pdf.cell(0, 5, clean_pdf_str(line), ln=True)
-                    pdf.ln(2)
+                        line = f"[ ] {it['name']} : {qty_str} {it['unit']}"
+                        pdf.set_x(right_x + 2)
+                        pdf.cell(right_width - 4, 4.5, clean_pdf_str(line), ln=True)
+                    
+                    pdf.ln(1)
 
         # Produits récurrents
         if recurrent_items:
-            pdf.ln(5)
-            pdf.set_font('Helvetica', 'B', 14)
-            pdf.cell(0, 10, '3. Produits recurrents', ln=True, fill=True)
-            pdf.ln(3)
-            pdf.set_font('Helvetica', size=9)
-            col_width = 90
-            for i, rec in enumerate(recurrent_items):
-                txt = clean_pdf_str(f"[  ] {rec['name']} ({rec.get('category', 'Autre')})")
-                pdf.cell(col_width, 5, txt)
-                if (i + 1) % 2 == 0:
-                    pdf.ln()
-            if len(recurrent_items) % 2 != 0:
-                pdf.ln()
+            pdf.set_x(right_x)
+            pdf.set_y(pdf.get_y() + 3)
+            pdf.set_font('Helvetica', 'B', 11)
+            pdf.set_fill_color(240, 240, 240)
+            pdf.cell(right_width, 7, 'Produits récurrents', ln=True, fill=True)
+            pdf.ln(1)
+            
+            pdf.set_font('Helvetica', size=8)
+            for rec in recurrent_items:
+                if pdf.get_y() > 270:
+                    pdf.add_page()
+                    pdf.set_y(15)
+                
+                txt = f"[ ] {rec['name']}"
+                pdf.set_x(right_x + 2)
+                pdf.cell(right_width - 4, 4.5, clean_pdf_str(txt), ln=True)
 
         return bytes(pdf.output())
     
@@ -294,7 +379,7 @@ def main():
         recipes_dict = {r['id']: r for r in all_recipes}
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
         
-        # Recettes normales (sans le préfixe [Ing])
+        # Recettes normales
         recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ')])
         
         if not recipes and not ingredients:
@@ -351,14 +436,11 @@ def main():
                                 meals = meals_by_type[meal_type]
                                 label = REPAS_LABELS.get(meal_type, meal_type)
                                 
-                                # Calculer le nombre de personnes
                                 servings_list = [meal.get('servings', 1) for meal in meals]
                                 servings = max(servings_list) if servings_list else 1
                                 
-                                # Afficher l'en-tête du type de repas
                                 st.markdown(f"**{label} ({servings}p) :**")
                                 
-                                # Afficher chaque item
                                 for meal in meals:
                                     rec = recipes_dict.get(meal.get('recipe_id'))
                                     if rec:
@@ -447,7 +529,6 @@ def main():
                         if st.button("➕ Ajouter", key=f"add_meal_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
                             try:
                                 if item_type == "Recette" and selected_recipe:
-                                    # Ajouter une recette normale
                                     supabase.table("planned_meals").insert({
                                         "day": day_info['day_name'],
                                         "meal_type": meal_type,
@@ -455,10 +536,8 @@ def main():
                                         "servings": servings
                                     }).execute()
                                 elif item_type == "Ingrédient":
-                                    # Trouver l'ingrédient
                                     ing_obj = next((i for i in ingredients if i['name'] == selected_item), None)
                                     if ing_obj:
-                                        # Vérifier si une recette [Ing] existe déjà pour cet ingrédient
                                         existing_ing_recipe = next(
                                             (r for r in all_recipes if r['name'] == f"[Ing] {ing_obj['name']}"),
                                             None
@@ -467,7 +546,6 @@ def main():
                                         if existing_ing_recipe:
                                             ing_recipe_id = existing_ing_recipe['id']
                                         else:
-                                            # Créer une recette temporaire pour l'ingrédient
                                             temp_recipe = supabase.table("recipes").insert({
                                                 "name": f"[Ing] {ing_obj['name']}",
                                                 "base_servings": 1,
@@ -477,7 +555,6 @@ def main():
                                             if temp_recipe.data:
                                                 ing_recipe_id = temp_recipe.data[0]['id']
                                                 
-                                                # Ajouter l'ingrédient à la recette temporaire
                                                 supabase.table("recipe_ingredients").insert({
                                                     "recipe_id": ing_recipe_id,
                                                     "ingredient_id": ing_obj['id'],
@@ -487,7 +564,6 @@ def main():
                                                 st.error("Erreur lors de la création")
                                                 st.stop()
                                         
-                                        # Ajouter au planning
                                         supabase.table("planned_meals").insert({
                                             "day": day_info['day_name'],
                                             "meal_type": meal_type,
@@ -508,18 +584,15 @@ def main():
             
             with col_export:
                 if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
-                    # Calcul de la liste de courses pour le PDF
                     ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
                     recipe_ings = st.session_state.data.get('recipe_ingredients', [])
                     
-                    # Agrégation des ingrédients
                     aggregated = {}
                     for pm in planned_meals:
                         rec = recipes_dict.get(pm['recipe_id'])
                         if not rec:
                             continue
                         
-                        # Pour les recettes [Ing], la quantité est directement le nombre de servings
                         if rec['name'].startswith('[Ing] '):
                             ing_name = get_display_name(rec)
                             ing = next((i for i in ingredients_dict.values() if i['name'] == ing_name), None)
@@ -534,7 +607,6 @@ def main():
                                 else:
                                     aggregated[ing['id']]['qty'] += pm['servings']
                         else:
-                            # Recette normale
                             ratio = pm['servings'] / rec.get('base_servings', 1)
                             for ri in recipe_ings:
                                 if ri['recipe_id'] == pm['recipe_id']:
@@ -551,15 +623,20 @@ def main():
                                         }
                                     aggregated[ing['id']]['qty'] += qty
                     
-                    # Produits récurrents
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
-                    pdf_bytes = generate_pdf(planned_meals, aggregated, recurrent, recipes_dict)
+                    pdf_bytes = generate_pdf(
+                        planned_meals, 
+                        aggregated, 
+                        recurrent, 
+                        recipes_dict,
+                        start_date=start_date
+                    )
                     if pdf_bytes:
                         st.download_button(
                             "📥 Télécharger le PDF",
                             data=pdf_bytes,
-                            file_name=f"menu_semaine_{start_date.strftime('%Y%m%d')}.pdf",
+                            file_name=f"menus_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf",
                             mime="application/pdf",
                             key="download_pdf_btn",
                             use_container_width=True
@@ -588,7 +665,6 @@ def main():
         recipe_ings = st.session_state.data.get('recipe_ingredients', [])
         ingredients = st.session_state.data.get('ingredients', [])
         
-        # Filtrer les recettes temporaires d'ingrédients
         recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ')])
         
         if not recipes:
@@ -657,13 +733,11 @@ def main():
     with tab_editer:
         st.header("Créer / Éditer une recette")
 
-        # Données
         all_recipes = st.session_state.data.get('recipes', [])
         recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ')])
         recipe_ings = st.session_state.data.get('recipe_ingredients', [])
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
 
-        # Mode création ou édition
         mode = st.radio(
             "Mode",
             ["➕ Créer une nouvelle recette", "✏️ Éditer une recette existante"],
