@@ -257,12 +257,12 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         available_height = page_height - margin - y_start - 8 - 5
         
         # Largeur du bloc jour (vertical)
-        day_block_width = 15
+        day_block_width = 18  # Légèrement plus large pour plus de confort
         
-        # Calculer la hauteur minimale pour afficher "Dimanche" en vertical
+        # Calculer la hauteur minimale pour afficher "Dimanche" en vertical avec plus de marge
         pdf.set_font('Helvetica', 'B', day_font_size)
         dimanche_width = pdf.get_string_width('Dimanche')
-        min_block_height = dimanche_width + 6  # + marge de sécurité
+        min_block_height = dimanche_width + 12  # Plus de marge (12mm au lieu de 6mm)
         
         # Calculer la hauteur de chaque jour en fonction du contenu
         day_heights = []
@@ -275,7 +275,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             soir_lines = max(len(soir_items), 1)
             
             # Hauteur nécessaire pour le contenu
-            content_height = (midi_lines + soir_lines) * (meal_line_height + meal_spacing) + 4
+            content_height = (midi_lines + soir_lines) * (meal_line_height + meal_spacing) + 6
             # Prendre le maximum entre le contenu et la hauteur minimale
             day_height = max(content_height, min_block_height)
             day_heights.append(day_height)
@@ -286,7 +286,8 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         # Si trop grand, réduire proportionnellement
         if total_height > available_height:
             scale = available_height / total_height
-            day_heights = [h * scale for h in day_heights]
+            # Ne pas trop réduire la hauteur minimale
+            day_heights = [max(h * scale, min_block_height * 0.8) for h in day_heights]
             meal_line_height = meal_line_height * scale
             meal_spacing = meal_spacing * scale
         
@@ -316,12 +317,15 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             pdf.set_draw_color(200, 200, 200)
             pdf.rect(left_x, y, day_block_width, block_height - 1, 'D')
             
-            # Nom du jour en vertical
+            # Nom du jour en vertical avec plus d'espace
             pdf.set_font('Helvetica', 'B', day_font_size)
             
+            # Espace supplémentaire pour le texte vertical
+            text_margin = 4
+            
             with pdf.rotation(90, left_x + day_block_width/2, y + block_height/2):
-                text_width = block_height - 4
-                text_height = day_block_width - 2
+                text_width = block_height - (text_margin * 2)
+                text_height = day_block_width - (text_margin * 0.5)
                 pdf.set_xy(left_x + day_block_width/2 - text_width/2, y + block_height/2 - text_height/2)
                 pdf.cell(text_width, text_height, clean_pdf_str(day_name), align='C')
             
@@ -330,7 +334,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             content_width = left_width - day_block_width - 4
             
             # Hauteur du déjeuner (proportionnelle)
-            midi_height = midi_lines * (meal_line_height + meal_spacing) + 2
+            midi_height = midi_lines * (meal_line_height + meal_spacing) + 3
             
             pdf.set_fill_color(*midi_bg)
             pdf.rect(content_x, y, content_width, midi_height - 1, 'F')
@@ -338,16 +342,16 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             midi_servings = max([item['servings'] for item in midi_items], default=1) if midi_items else 1
             
             # Première ligne : "Déjeuner (4P) :" + premier plat aligné
-            pdf.set_xy(content_x + 3, y + 1)
+            pdf.set_xy(content_x + 3, y + 1.5)
             pdf.set_font('Helvetica', 'B', meal_font_size)
             pdf.cell(40, meal_line_height, f'Déjeuner ({midi_servings}P) :', border=0)
             
             # Premier plat sur la même ligne
             if midi_items:
                 pdf.set_font('Helvetica', '', meal_font_size)
-                pdf.set_xy(content_x + 43, y + 1)
+                pdf.set_xy(content_x + 43, y + 1.5)
                 pdf.cell(content_width - 48, meal_line_height, clean_pdf_str(midi_items[0]['name'])[:35], border=0, ln=True)
-                y_content = y + 1 + meal_line_height + meal_spacing
+                y_content = y + 1.5 + meal_line_height + meal_spacing
                 
                 # Plats suivants
                 for item in midi_items[1:]:
@@ -356,13 +360,13 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     y_content += meal_line_height + meal_spacing
             else:
                 pdf.set_font('Helvetica', 'I', meal_font_size)
-                pdf.set_xy(content_x + 43, y + 1)
+                pdf.set_xy(content_x + 43, y + 1.5)
                 pdf.cell(content_width - 48, meal_line_height, '-', border=0, ln=True)
             
             y_diner = y + midi_height + 1
             
             # ===== DÎNER =====
-            soir_height = soir_lines * (meal_line_height + meal_spacing) + 2
+            soir_height = soir_lines * (meal_line_height + meal_spacing) + 3
             
             pdf.set_fill_color(*soir_bg)
             pdf.rect(content_x, y_diner, content_width, soir_height - 1, 'F')
@@ -370,16 +374,16 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             soir_servings = max([item['servings'] for item in soir_items], default=1) if soir_items else 1
             
             # Première ligne : "Dîner (3P) :" + premier plat aligné
-            pdf.set_xy(content_x + 3, y_diner + 1)
+            pdf.set_xy(content_x + 3, y_diner + 1.5)
             pdf.set_font('Helvetica', 'B', meal_font_size)
             pdf.cell(40, meal_line_height, f'Dîner ({soir_servings}P) :', border=0)
             
             # Premier plat sur la même ligne
             if soir_items:
                 pdf.set_font('Helvetica', '', meal_font_size)
-                pdf.set_xy(content_x + 43, y_diner + 1)
+                pdf.set_xy(content_x + 43, y_diner + 1.5)
                 pdf.cell(content_width - 48, meal_line_height, clean_pdf_str(soir_items[0]['name'])[:35], border=0, ln=True)
-                y_content = y_diner + 1 + meal_line_height + meal_spacing
+                y_content = y_diner + 1.5 + meal_line_height + meal_spacing
                 
                 # Plats suivants
                 for item in soir_items[1:]:
@@ -388,7 +392,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     y_content += meal_line_height + meal_spacing
             else:
                 pdf.set_font('Helvetica', 'I', meal_font_size)
-                pdf.set_xy(content_x + 43, y_diner + 1)
+                pdf.set_xy(content_x + 43, y_diner + 1.5)
                 pdf.cell(content_width - 48, meal_line_height, '-', border=0, ln=True)
             
             y += block_height + 2
