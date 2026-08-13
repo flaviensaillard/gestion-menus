@@ -11,8 +11,8 @@ try:
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 except KeyError:
     # Option de secours si les secrets ne sont pas définis
-    SUPABASE_URL = "https://ton-id-projet.supabase.co"
-    SUPABASE_KEY = "ta-cle-api-anon"
+    SUPABASE_URL = "https://jwqaspdomehuzqwvflri.supabase.co"
+    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3cWFzcGRvbWVodXpxd3ZmbHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MzM2MzEsImV4cCI6MjEwMjIwOTYzMX0.NJlzUJpdZ0WhFBMJdAftZNms_dZ5-nmEYAlB1p_B7lE"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
