@@ -146,7 +146,6 @@ with tab_planning:
     with col_date:
         start_date = st.date_input("Date du samedi (début du menu)", datetime.date.today(), key="start_date_picker")
     
-    # Fin du menu le vendredi (6 jours plus tard)
     end_date = start_date + datetime.timedelta(days=6)
 
     start_str = start_date.strftime("%d/%m/%Y")
@@ -162,21 +161,27 @@ with tab_planning:
     recipe_map = {r["name"]: r["id"] for r in recipes if r and "name" in r}
     ingredient_map = {i["name"]: i["id"] for i in ingredients if i and "name" in i}
 
+    # CHOIX DU TYPE HORS DU FORMULAIRE POUR DÉCLENCHER LE RAFRAÎCHISSEMENT DYNAMIQUE
+    source_type = st.radio(
+        "Élément à ajouter :", 
+        ["Recette", "Ingrédient simple"], 
+        horizontal=True,
+        key="meal_source_type"
+    )
+
     with st.form("add_meal_form"):
-        c1, c2, c3, c4 = st.columns([2, 2, 3, 4])
+        c1, c2, c3 = st.columns([2, 2, 5])
         with c1:
             selected_day = st.selectbox("Jour", DAYS)
         with c2:
             selected_type = st.selectbox("Repas", meal_types)
         with c3:
-            source_type = st.radio("Type de repas", ["Recette", "Ingrédient simple"], horizontal=True)
-        with c4:
             if source_type == "Recette":
                 recipe_names = ["-- Aucune --"] + sorted(list(recipe_map.keys()))
                 chosen_item = st.selectbox("Choisir la recette", recipe_names)
             else:
                 ingredient_names = ["-- Aucun --"] + sorted(list(ingredient_map.keys()))
-                chosen_item = st.selectbox("Choisir l'ingrédient", ingredient_names)
+                chosen_item = st.selectbox("Choisir l'ingrédient simple", ingredient_names)
 
         submit_meal = st.form_submit_button("Affecter au menu")
 
