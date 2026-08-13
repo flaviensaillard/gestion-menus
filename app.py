@@ -151,7 +151,7 @@ with tab_planning:
     start_str = start_date.strftime("%d/%m/%Y")
     end_str = end_date.strftime("%d/%m/%Y")
 
-    st.subheader(f"📌 Planification de la semaine ({start_str} au {end_str})")
+    st.subheader(f"📌 Planification du {start_str} au {end_str}")
 
     meal_types = ["Midi", "Soir"]
 
@@ -161,7 +161,7 @@ with tab_planning:
     recipe_map = {r["name"]: r["id"] for r in recipes if r and "name" in r}
     ingredient_map = {i["name"]: i["id"] for i in ingredients if i and "name" in i}
 
-    # CHOIX DU TYPE HORS DU FORMULAIRE POUR DÉCLENCHER LE RAFRAÎCHISSEMENT DYNAMIQUE
+    # Choix du type d'élément (Hors du formulaire pour la réactivité immédiate)
     source_type = st.radio(
         "Élément à ajouter :", 
         ["Recette", "Ingrédient simple"], 
@@ -170,7 +170,7 @@ with tab_planning:
     )
 
     with st.form("add_meal_form"):
-        c1, c2, c3 = st.columns([2, 2, 5])
+        c1, c2, c3, c4 = st.columns([2, 2, 4, 2])
         with c1:
             selected_day = st.selectbox("Jour", DAYS)
         with c2:
@@ -182,6 +182,8 @@ with tab_planning:
             else:
                 ingredient_names = ["-- Aucun --"] + sorted(list(ingredient_map.keys()))
                 chosen_item = st.selectbox("Choisir l'ingrédient simple", ingredient_names)
+        with c4:
+            nb_persons = st.number_input("Pers.", min_value=1, max_value=20, value=4, step=1)
 
         submit_meal = st.form_submit_button("Affecter au menu")
 
@@ -191,20 +193,23 @@ with tab_planning:
 
         if recipe_id or ingredient_id:
             try:
+                # Supprime le repas déjà existant sur ce créneau
                 supabase.table("planned_meals").delete().eq("day", selected_day).eq("meal_type", selected_type).execute()
+                # Insère le nouveau repas avec le nombre de personnes
                 supabase.table("planned_meals").insert({
                     "day": selected_day,
                     "meal_type": selected_type,
                     "recipe_id": recipe_id,
-                    "ingredient_id": ingredient_id
+                    "ingredient_id": ingredient_id,
+                    "nb_persons": nb_persons
                 }).execute()
-                st.success(f"Repas mis à jour pour {selected_day} ({selected_type})")
+                st.success(f"Repas mis à jour pour {selected_day} ({selected_type}) - {nb_persons} pers.")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour : {e}")
 
-    # Récupération des données planifiées
+    # Récupération et traitement des données planifiées
     planned = load_planned_meals()
     planning_dict = {}
     shopping_list = []
@@ -214,14 +219,18 @@ with tab_planning:
             continue
         day = p.get("day")
         m_type = p.get("meal_type")
+        persons = p.get("nb_persons") or 4
         
+        item_name = None
         if p.get("recipes"):
-            item_name = p["recipes"].get("name", "Recette sans nom")
-            planning_dict[(day, m_type)] = item_name
-            shopping_list.append(item_name)
+            item_name = p["recipes"].get("name")
         elif p.get("ingredients"):
-            item_name = p["ingredients"].get("name", "Ingrédient sans nom")
-            planning_dict[(day, m_type)] = item_name
+            item_name = p["ingredients"].get("name")
+            
+        if item_name:
+            # Formatage pour l'affichage (ex: Lasagnes (4 pers.))
+            display_str = f"{item_name} ({persons} pers.)"
+            planning_dict[(day, m_type)] = display_str
             shopping_list.append(item_name)
 
     shopping_list = sorted(list(set(shopping_list)))
