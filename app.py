@@ -176,6 +176,15 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         light_gray_bg = (248, 248, 248)
         midi_bg = (255, 250, 240)  # Fond crème pour déjeuner
         soir_bg = (240, 245, 255)  # Fond bleu très clair pour dîner
+        day_bg_colors = [
+            (255, 228, 225),  # Rose pastel
+            (225, 245, 225),  # Vert pastel clair
+            (255, 245, 200),  # Jaune pastel
+            (230, 240, 255),  # Bleu pastel
+            (245, 230, 255),  # Violet pastel
+            (255, 235, 215),  # Pêche pastel
+            (235, 255, 245),  # Menthe pastel
+        ]
         
         # Tailles de police fixes
         title_font_size = 28
@@ -258,6 +267,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         y = pdf.get_y() + 2
         
+        # Largeur du bloc jour (vertical)
+        day_block_width = 18
+        
         # Affichage des jours
         for i, day_info in enumerate(week_days):
             day_name = day_info['day_name']
@@ -268,87 +280,96 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             # Calculer la hauteur du bloc jour
             midi_height = meal_type_line_height + (len(midi_items) * meal_line_height) + 2 if midi_items else meal_type_line_height + meal_line_height + 2
             soir_height = meal_type_line_height + (len(soir_items) * meal_line_height) + 2 if soir_items else meal_type_line_height + meal_line_height + 2
-            interline = 2  # Interligne entre déjeuner et dîner
-            block_height = day_line_height + midi_height + interline + soir_height + 3
+            interline = 2
+            block_height = max(midi_height + interline + soir_height + 3, day_line_height + 4)
             
             # Vérifier si on a assez de place
             if y + block_height > page_height - margin:
                 break
             
-            # Fond du jour (alternance)
-            if i % 2 == 0:
-                pdf.set_fill_color(*white_bg)
-            else:
-                pdf.set_fill_color(*light_gray_bg)
+            # Couleur pastel pour le bloc jour
+            day_color = day_bg_colors[i % len(day_bg_colors)]
             
-            # Dessiner le fond du jour
-            pdf.rect(left_x, y, left_width, block_height - 1, 'F')
+            # Fond du bloc jour (vertical)
+            pdf.set_fill_color(*day_color)
+            pdf.rect(left_x, y, day_block_width, block_height - 1, 'F')
             
-            # Nom du jour (vertical)
-            pdf.set_xy(left_x + 3, y + 2)
+            # Dessiner une bordure légère
+            pdf.set_draw_color(200, 200, 200)
+            pdf.rect(left_x, y, day_block_width, block_height - 1, 'D')
+            
+            # Nom du jour en vertical (rotation 90°)
             pdf.set_font('Helvetica', 'B', day_font_size)
-            pdf.cell(left_width - 6, day_line_height, clean_pdf_str(day_name), border=0)
             
-            y += day_line_height
+            # Position du texte vertical
+            text_x = left_x + day_block_width / 2
+            text_y = y + block_height / 2
+            
+            # Rotation du texte
+            with pdf.rotation(90, text_x, text_y):
+                pdf.set_xy(text_x - block_height/2 + 2, text_y - day_block_width/2 + 2)
+                pdf.cell(block_height - 4, day_block_width - 4, clean_pdf_str(day_name), align='C')
             
             # ===== DÉJEUNER =====
+            content_x = left_x + day_block_width + 2
+            
             # Fond crème pour le déjeuner
             pdf.set_fill_color(*midi_bg)
-            pdf.rect(left_x + 3, y, left_width - 6, midi_height - 1, 'F')
+            pdf.rect(content_x, y, left_width - day_block_width - 4, midi_height - 1, 'F')
             
             # Titre Déjeuner
-            pdf.set_xy(left_x + 5, y + 1)
+            pdf.set_xy(content_x + 3, y + 1)
             pdf.set_font('Helvetica', 'B', meal_type_font_size)
             pdf.cell(30, meal_type_line_height, 'Déjeuner :', border=0)
             
-            y += meal_type_line_height
+            y_content = y + meal_type_line_height
             
             # Plats du déjeuner
             if midi_items:
                 pdf.set_font('Helvetica', '', meal_font_size)
                 for item in midi_items:
-                    pdf.set_xy(left_x + 35, y)
-                    pdf.cell(left_width - 40, meal_line_height, clean_pdf_str(item)[:50], border=0, ln=True)
-                    y += meal_line_height
+                    pdf.set_xy(content_x + 33, y_content)
+                    pdf.cell(left_width - day_block_width - 38, meal_line_height, clean_pdf_str(item)[:45], border=0, ln=True)
+                    y_content += meal_line_height
             else:
                 pdf.set_font('Helvetica', 'I', meal_font_size)
-                pdf.set_xy(left_x + 35, y)
-                pdf.cell(left_width - 40, meal_line_height, '-', border=0, ln=True)
-                y += meal_line_height
+                pdf.set_xy(content_x + 33, y_content)
+                pdf.cell(left_width - day_block_width - 38, meal_line_height, '-', border=0, ln=True)
+                y_content += meal_line_height
             
-            # Interligne entre déjeuner et dîner
-            y += interline
+            # Interligne
+            y_diner = y + midi_height + interline
             
             # ===== DÎNER =====
             # Fond bleu très clair pour le dîner
             pdf.set_fill_color(*soir_bg)
-            pdf.rect(left_x + 3, y, left_width - 6, soir_height - 1, 'F')
+            pdf.rect(content_x, y_diner, left_width - day_block_width - 4, soir_height - 1, 'F')
             
             # Titre Dîner
-            pdf.set_xy(left_x + 5, y + 1)
+            pdf.set_xy(content_x + 3, y_diner + 1)
             pdf.set_font('Helvetica', 'B', meal_type_font_size)
             pdf.cell(30, meal_type_line_height, 'Dîner :', border=0)
             
-            y += meal_type_line_height
+            y_content = y_diner + meal_type_line_height
             
             # Plats du dîner
             if soir_items:
                 pdf.set_font('Helvetica', '', meal_font_size)
                 for item in soir_items:
-                    pdf.set_xy(left_x + 35, y)
-                    pdf.cell(left_width - 40, meal_line_height, clean_pdf_str(item)[:50], border=0, ln=True)
-                    y += meal_line_height
+                    pdf.set_xy(content_x + 33, y_content)
+                    pdf.cell(left_width - day_block_width - 38, meal_line_height, clean_pdf_str(item)[:45], border=0, ln=True)
+                    y_content += meal_line_height
             else:
                 pdf.set_font('Helvetica', 'I', meal_font_size)
-                pdf.set_xy(left_x + 35, y)
-                pdf.cell(left_width - 40, meal_line_height, '-', border=0, ln=True)
-                y += meal_line_height
+                pdf.set_xy(content_x + 33, y_content)
+                pdf.cell(left_width - day_block_width - 38, meal_line_height, '-', border=0, ln=True)
+                y_content += meal_line_height
             
-            # Espacement entre les jours
-            y += 3
+            # Passage au jour suivant
+            y += block_height + 2
         
         # ==================== COLONNE DROITE : LISTE DE COURSES ====================
-        y_right = margin  # Commencer au sommet de la page
+        y_right = margin
         
         # Cadre orange pastel
         pdf.set_fill_color(*orange_bg)
@@ -381,12 +402,10 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     for it in by_cat[cat]:
                         qty_str = format_quantity(it['qty'])
                         
-                        # Case à cocher
                         checkbox_size = 2.5
                         pdf.set_draw_color(100, 100, 100)
                         pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
                         
-                        # Texte de l'item
                         line = f"{it['name']} : {qty_str} {it['unit']}"
                         pdf.set_xy(right_x + 7, y_right)
                         pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(line), ln=True)
@@ -398,7 +417,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         if recurrent_items:
             y_right += 3
             
-            # Cadre gris très clair
             pdf.set_fill_color(*gray_bg)
             pdf.set_xy(right_x, y_right)
             pdf.set_font('Helvetica', 'B', courses_font_size)
@@ -410,12 +428,10 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 if y_right > page_height - margin - 2:
                     break
                 
-                # Case à cocher
                 checkbox_size = 2.5
                 pdf.set_draw_color(100, 100, 100)
                 pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
                 
-                # Texte
                 pdf.set_xy(right_x + 7, y_right)
                 pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(rec['name']), ln=True)
                 y_right += courses_line_height
