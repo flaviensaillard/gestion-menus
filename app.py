@@ -93,6 +93,34 @@ def format_quantity(qty: float) -> str:
         return str(int(qty))
     return f"{qty:.2f}".rstrip('0').rstrip('.')
 
+def instructions_to_text(instructions_list: List[str]) -> str:
+    """Convertit une liste d'instructions en texte avec numérotation."""
+    if not instructions_list:
+        return ""
+    return "\n".join([f"{i+1}. {instr}" for i, instr in enumerate(instructions_list) if instr.strip()])
+
+def text_to_instructions(text: str) -> List[str]:
+    """Convertit un texte numéroté en liste d'instructions."""
+    if not text:
+        return [""]
+    
+    lines = text.split('\n')
+    instructions = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Supprimer la numérotation si elle existe (ex: "1. ", "2. ", etc.)
+        import re
+        match = re.match(r'^\d+\.\s*', line)
+        if match:
+            instructions.append(line[match.end():])
+        else:
+            instructions.append(line)
+    
+    return instructions if instructions else [""]
+
 # ------------------------------
 # GÉNÉRATION PDF
 # ------------------------------
@@ -419,10 +447,13 @@ def main():
                 else:
                     st.info("Aucun ingrédient pour cette recette.")
                 
-                # Affichage des instructions
+                # Affichage des instructions numérotées
                 st.markdown("### 📝 Instructions")
                 if recipe.get('instructions'):
-                    st.write(recipe['instructions'])
+                    instructions_list = text_to_instructions(recipe['instructions'])
+                    for i, instruction in enumerate(instructions_list, 1):
+                        if instruction.strip():
+                            st.markdown(f"**{i}.** {instruction}")
                 else:
                     st.info("Aucune instruction pour cette recette.")
 
@@ -449,7 +480,7 @@ def main():
 
         # ==================== MODE CRÉATION ====================
         if mode == "➕ Créer une nouvelle recette":
-            # Organisation en deux colonnes pour la création
+            # Organisation en deux colonnes
             col_left, col_right = st.columns([1, 1])
             
             with col_left:
@@ -463,12 +494,35 @@ def main():
                     help="Nombre de personnes pour lequel la recette est prévue",
                     key="create_recipe_servings"
                 )
-                instructions = st.text_area(
-                    "Instructions de préparation", 
-                    height=200,
-                    placeholder="Étape 1 : ...\nÉtape 2 : ...",
-                    key="create_recipe_instructions"
-                )
+                
+                # Instructions numérotées
+                st.markdown("### 📝 Instructions")
+                
+                # Initialisation des instructions
+                if 'new_recipe_instructions' not in st.session_state:
+                    st.session_state.new_recipe_instructions = [""]
+                
+                # Affichage des instructions numérotées
+                for idx, instruction in enumerate(st.session_state.new_recipe_instructions):
+                    col_instr, col_del_instr = st.columns([5, 1])
+                    with col_instr:
+                        st.text_input(
+                            f"Instruction {idx + 1}",
+                            value=instruction,
+                            key=f"create_instruction_{idx}",
+                            placeholder=f"Étape {idx + 1}..."
+                        )
+                        st.session_state.new_recipe_instructions[idx] = st.session_state[f"create_instruction_{idx}"]
+                    with col_del_instr:
+                        if len(st.session_state.new_recipe_instructions) > 1:
+                            if st.button("❌", key=f"del_create_instruction_{idx}", help="Supprimer cette instruction"):
+                                st.session_state.new_recipe_instructions.pop(idx)
+                                st.rerun()
+                
+                # Bouton pour ajouter une instruction
+                if st.button("➕ Nouvelle instruction", key="add_create_instruction", use_container_width=True):
+                    st.session_state.new_recipe_instructions.append("")
+                    st.rerun()
             
             with col_right:
                 st.markdown("### 🛒 Ingrédients de la recette")
@@ -489,7 +543,6 @@ def main():
                         with col1:
                             # Liste des ingrédients disponibles
                             ing_names = [i['name'] for i in ingredients]
-                            # Exclure les ingrédients déjà sélectionnés dans d'autres lignes
                             already_selected = [
                                 r['ingredient'] for i, r in enumerate(st.session_state.new_recipe_ings) 
                                 if i != idx and r['ingredient']
@@ -525,7 +578,6 @@ def main():
                             st.session_state.new_recipe_ings[idx]['quantity'] = qty
                         
                         with col3:
-                            # Déterminer l'unité par défaut
                             if selected_ing:
                                 ing_obj = next((i for i in ingredients if i['name'] == selected_ing), None)
                                 default_unit = ing_obj['unit'] if ing_obj else "g"
@@ -543,13 +595,12 @@ def main():
                             st.session_state.new_recipe_ings[idx]['unit'] = selected_unit
                         
                         with col4:
-                            # Bouton pour supprimer cette ligne
                             if len(st.session_state.new_recipe_ings) > 1:
                                 if st.button("❌", key=f"remove_create_ing_{idx}", help="Supprimer cette ligne"):
                                     st.session_state.new_recipe_ings.pop(idx)
                                     st.rerun()
                     
-                    # Bouton pour ajouter une nouvelle ligne
+                    # Bouton pour ajouter une nouvelle ligne d'ingrédient
                     if st.button("➕ Nouvelle ligne", key="add_create_ing_row", use_container_width=True):
                         st.session_state.new_recipe_ings.append(
                             {"ingredient": None, "quantity": 100.0, "unit": "g"}
@@ -563,11 +614,14 @@ def main():
                     st.error("Le nom est obligatoire")
                 else:
                     try:
+                        # Convertir les instructions en texte
+                        instructions_text = instructions_to_text(st.session_state.new_recipe_instructions)
+                        
                         # Créer la recette
                         result = supabase.table("recipes").insert({
                             "name": name.strip().capitalize(),
                             "base_servings": servings,
-                            "instructions": instructions
+                            "instructions": instructions_text
                         }).execute()
                         
                         if result.data:
@@ -599,6 +653,7 @@ def main():
                             st.session_state.new_recipe_ings = [
                                 {"ingredient": None, "quantity": 100.0, "unit": "g"}
                             ]
+                            st.session_state.new_recipe_instructions = [""]
                             refresh_data()
                         else:
                             st.error("Erreur lors de la création")
@@ -664,36 +719,63 @@ def main():
                     with col_left:
                         st.markdown("### 📝 Informations")
                         
-                        with st.form(f"edit_recipe_info_{recipe['id']}"):
-                            new_name = st.text_input(
-                                "Nom", 
-                                value=recipe['name'],
-                                key=f"edit_rname_{recipe['id']}"
+                        # Initialisation des instructions pour l'édition
+                        if f'edit_instructions_{recipe["id"]}' not in st.session_state:
+                            st.session_state[f'edit_instructions_{recipe["id"]}'] = text_to_instructions(
+                                recipe.get('instructions', '')
                             )
-                            new_servings = st.number_input(
-                                "Personnes de base", 
-                                min_value=1,
-                                value=recipe.get('base_servings', 4),
-                                key=f"edit_rservings_{recipe['id']}"
-                            )
-                            new_instructions = st.text_area(
-                                "Instructions", 
-                                value=recipe.get('instructions', ''),
-                                height=200,
-                                key=f"edit_rinstructions_{recipe['id']}"
-                            )
-                            
-                            if st.form_submit_button("💾 Sauvegarder", use_container_width=True):
-                                try:
-                                    supabase.table("recipes").update({
-                                        "name": new_name.strip().capitalize(),
-                                        "base_servings": new_servings,
-                                        "instructions": new_instructions
-                                    }).eq("id", recipe['id']).execute()
-                                    st.success("✅ Modifications enregistrées !")
-                                    refresh_data()
-                                except Exception as e:
-                                    st.error(f"Erreur : {e}")
+                        
+                        new_name = st.text_input(
+                            "Nom", 
+                            value=recipe['name'],
+                            key=f"edit_rname_{recipe['id']}"
+                        )
+                        new_servings = st.number_input(
+                            "Personnes de base", 
+                            min_value=1,
+                            value=recipe.get('base_servings', 4),
+                            key=f"edit_rservings_{recipe['id']}"
+                        )
+                        
+                        # Instructions numérotées
+                        st.markdown("**Instructions :**")
+                        for idx, instruction in enumerate(st.session_state[f'edit_instructions_{recipe["id"]}']):
+                            col_instr, col_del_instr = st.columns([5, 1])
+                            with col_instr:
+                                st.text_input(
+                                    f"Instruction {idx + 1}",
+                                    value=instruction,
+                                    key=f"edit_instruction_{recipe['id']}_{idx}",
+                                    placeholder=f"Étape {idx + 1}..."
+                                )
+                                st.session_state[f'edit_instructions_{recipe["id"]}'][idx] = st.session_state[f"edit_instruction_{recipe['id']}_{idx}"]
+                            with col_del_instr:
+                                if len(st.session_state[f'edit_instructions_{recipe["id"]}']) > 1:
+                                    if st.button("❌", key=f"del_edit_instruction_{recipe['id']}_{idx}", help="Supprimer cette instruction"):
+                                        st.session_state[f'edit_instructions_{recipe["id"]}'].pop(idx)
+                                        st.rerun()
+                        
+                        # Bouton pour ajouter une instruction
+                        if st.button("➕ Nouvelle instruction", key=f"add_edit_instruction_{recipe['id']}", use_container_width=True):
+                            st.session_state[f'edit_instructions_{recipe["id"]}'].append("")
+                            st.rerun()
+                        
+                        # Bouton de sauvegarde
+                        st.markdown("---")
+                        if st.button("💾 Sauvegarder les modifications", key=f"save_recipe_{recipe['id']}", use_container_width=True, type="primary"):
+                            try:
+                                instructions_text = instructions_to_text(st.session_state[f'edit_instructions_{recipe["id"]}'])
+                                supabase.table("recipes").update({
+                                    "name": new_name.strip().capitalize(),
+                                    "base_servings": new_servings,
+                                    "instructions": instructions_text
+                                }).eq("id", recipe['id']).execute()
+                                st.success("✅ Modifications enregistrées !")
+                                # Nettoyer le cache des instructions
+                                del st.session_state[f'edit_instructions_{recipe["id"]}']
+                                refresh_data()
+                            except Exception as e:
+                                st.error(f"Erreur : {e}")
                     
                     # ============ COLONNE DROITE : INGRÉDIENTS ============
                     with col_right:
@@ -738,9 +820,7 @@ def main():
                                 col1, col2, col3, col4 = st.columns([3, 1.5, 1.5, 0.5])
                                 
                                 with col1:
-                                    # Liste des ingrédients disponibles
                                     ing_names = [i['name'] for i in available_ings]
-                                    # Ajouter les ingrédients déjà sélectionnés dans d'autres lignes
                                     already_selected = [
                                         r['ingredient'] for i, r in enumerate(st.session_state[f'new_ings_{recipe["id"]}']) 
                                         if i != idx and r['ingredient']
@@ -776,7 +856,6 @@ def main():
                                     st.session_state[f'new_ings_{recipe["id"]}'][idx]['quantity'] = qty
                                 
                                 with col3:
-                                    # Déterminer l'unité par défaut de l'ingrédient sélectionné
                                     if selected_ing:
                                         ing_obj = next((i for i in available_ings if i['name'] == selected_ing), None)
                                         default_unit = ing_obj['unit'] if ing_obj else "g"
@@ -794,7 +873,6 @@ def main():
                                     st.session_state[f'new_ings_{recipe["id"]}'][idx]['unit'] = selected_unit
                                 
                                 with col4:
-                                    # Bouton pour supprimer cette ligne
                                     if len(st.session_state[f'new_ings_{recipe["id"]}']) > 1:
                                         if st.button("❌", key=f"remove_new_ing_{recipe['id']}_{idx}", help="Supprimer cette ligne"):
                                             st.session_state[f'new_ings_{recipe["id"]}'].pop(idx)
@@ -816,13 +894,11 @@ def main():
                                         added_count = 0
                                         for new_ing in st.session_state[f'new_ings_{recipe["id"]}']:
                                             if new_ing['ingredient']:
-                                                # Trouver l'ingrédient dans la base
                                                 ing_obj = next(
                                                     (i for i in available_ings if i['name'] == new_ing['ingredient']),
                                                     None
                                                 )
                                                 if ing_obj:
-                                                    # Ajouter l'ingrédient à la recette
                                                     supabase.table("recipe_ingredients").insert({
                                                         "recipe_id": recipe['id'],
                                                         "ingredient_id": ing_obj['id'],
@@ -832,7 +908,6 @@ def main():
                                         
                                         if added_count > 0:
                                             st.success(f"✅ {added_count} ingrédient(s) ajouté(s) !")
-                                            # Réinitialiser le tableau
                                             st.session_state[f'new_ings_{recipe["id"]}'] = [
                                                 {"ingredient": None, "quantity": 100.0, "unit": "g"}
                                             ]
