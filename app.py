@@ -36,9 +36,14 @@ with tab_ingredients:
     with col1:
         st.subheader("➕ Ajouter un ingrédient")
         with st.form("form_add_ingredient", clear_on_submit=True):
-            name = st.text_input("Nom de l'ingrédient *", placeholder="ex: Carotte, Lait, Œuf...")
+            name = st.text_input("Nom de l'ingrédient *", placeholder="ex: Carotte, Lait, Huile d'olive...")
             unit = st.selectbox("Unité par défaut *", UNITES)
             category = st.selectbox("Rayon / Catégorie", RAYONS)
+            
+            st.markdown("---")
+            exclude_from_list = st.checkbox("🚪 Fond de placard (ne jamais ajouter aux courses)")
+            is_recurrent = st.checkbox("🔁 Produit récurrent (pense-bête permanent sur la liste)")
+            
             submitted = st.form_submit_button("Ajouter l'ingrédient")
             
             if submitted:
@@ -46,7 +51,13 @@ with tab_ingredients:
                     st.error("Le nom de l'ingrédient ne peut pas être vide.")
                 else:
                     try:
-                        data = {"name": name.strip().capitalize(), "unit": unit, "category": category}
+                        data = {
+                            "name": name.strip().capitalize(), 
+                            "unit": unit, 
+                            "category": category,
+                            "exclude_from_list": exclude_from_list,
+                            "is_recurrent": is_recurrent
+                        }
                         supabase.table("ingredients").insert(data).execute()
                         st.success(f"Ingrédient '{name}' ajouté !")
                         st.rerun()
@@ -64,13 +75,26 @@ with tab_ingredients:
             else:
                 st.dataframe(
                     ingredients_list,
-                    column_config={"id": None, "name": "Nom", "unit": "Unité", "category": "Rayon"},
+                    column_config={
+                        "id": None, 
+                        "name": "Nom", 
+                        "unit": "Unité", 
+                        "category": "Rayon",
+                        "exclude_from_list": st.column_config.CheckboxColumn(
+                            "Fond de placard",
+                            help="Si coché, cet ingrédient ne sera jamais ajouté à la liste de courses."
+                        ),
+                        "is_recurrent": st.column_config.CheckboxColumn(
+                            "Récurrent",
+                            help="Si coché, cet ingrédient sera toujours présent dans le bloc 'Produits récurrents' sous la liste de courses."
+                        )
+                    },
                     use_container_width=True,
                     hide_index=True
                 )
                 
                 with st.expander("✏️ Modifier un ingrédient existant"):
-                    ing_dict = {f"{ing['name']} (actuellement: {ing['unit']})": ing for ing in ingredients_list}
+                    ing_dict = {f"{ing['name']} ({ing['unit']})": ing for ing in ingredients_list}
                     selected_label = st.selectbox("Ingrédient à modifier", list(ing_dict.keys()), key="select_mod")
                     target_ing = ing_dict[selected_label]
                     
@@ -81,11 +105,19 @@ with tab_ingredients:
                         current_cat_idx = RAYONS.index(target_ing["category"]) if target_ing["category"] in RAYONS else 0
                         new_category = st.selectbox("Rayon / Catégorie", RAYONS, index=current_cat_idx)
                         
+                        current_exclude = target_ing.get("exclude_from_list", False) or False
+                        new_exclude = st.checkbox("🚪 Fond de placard (exclure de la liste de courses)", value=current_exclude)
+                        
+                        current_recurrent = target_ing.get("is_recurrent", False) or False
+                        new_recurrent = st.checkbox("🔁 Produit récurrent (pense-bête permanent sur la liste)", value=current_recurrent)
+                        
                         if st.form_submit_button("Enregistrer les modifications"):
                             supabase.table("ingredients").update({
                                 "name": new_name.strip().capitalize(),
                                 "unit": new_unit,
-                                "category": new_category
+                                "category": new_category,
+                                "exclude_from_list": new_exclude,
+                                "is_recurrent": new_recurrent
                             }).eq("id", target_ing["id"]).execute()
                             st.success("Ingrédient mis à jour !")
                             st.rerun()
@@ -148,7 +180,7 @@ with tab_recipes:
                     st.subheader("🛒 Ingrédients nécessaires")
                     
                     rec_ing_resp = supabase.table("recipe_ingredients")\
-                        .select("quantity, ingredients(name, unit)")\
+                        .select("quantity, ingredients(name, unit, exclude_from_list, is_recurrent)")\
                         .eq("recipe_id", recipe["id"]).execute()
                     
                     rec_ingredients = rec_ing_resp.data
@@ -160,7 +192,15 @@ with tab_recipes:
                             ing_info = item["ingredients"]
                             qty_calculated = round(item["quantity"] * ratio, 2)
                             qty_display = int(qty_calculated) if qty_calculated.is_integer() else qty_calculated
-                            st.write(f"• **{ing_info['name']}** : {qty_display} {ing_info['unit']}")
+                            
+                            tags = []
+                            if ing_info.get("exclude_from_list"):
+                                tags.append("Fond de placard")
+                            if ing_info.get("is_recurrent"):
+                                tags.append("Récurrent")
+                            
+                            tag_str = f" *({', '.join(tags)})*" if tags else ""
+                            st.write(f"• **{ing_info['name']}** : {qty_display} {ing_info['unit']}{tag_str}")
                 
                 st.markdown("---")
                 st.subheader("📝 Instructions de préparation")
@@ -220,7 +260,6 @@ with tab_recipes:
                     selected_edit_name = st.selectbox("Sélectionner la recette à gérer", list(edit_recipe_options.keys()))
                     target_recipe = edit_recipe_options[selected_edit_name]
                     
-                    # Formulaire de modification de l'en-tête de la recette
                     with st.expander("✏️ Modifier nom / personnes de base / instructions"):
                         with st.form("form_update_recipe"):
                             up_name = st.text_input("Nom", value=target_recipe["name"])
@@ -236,7 +275,6 @@ with tab_recipes:
                                 st.success("En-tête de recette mis à jour !")
                                 st.rerun()
 
-                    # --- DUPLICATION DE RECETTE ---
                     with st.expander("📋 Dupliquer cette recette"):
                         dup_name = st.text_input("Nom de la copie", value=f"{target_recipe['name']} (Copie)")
                         if st.button("Dupliquer maintenant", key="btn_dup_recipe"):
@@ -244,7 +282,6 @@ with tab_recipes:
                                 st.error("Le nom ne peut pas être vide.")
                             else:
                                 try:
-                                    # 1. Création de la recette
                                     new_rec_resp = supabase.table("recipes").insert({
                                         "name": dup_name.strip().capitalize(),
                                         "base_servings": target_recipe["base_servings"],
@@ -253,14 +290,12 @@ with tab_recipes:
                                     
                                     new_recipe_id = new_rec_resp.data[0]["id"]
                                     
-                                    # 2. Récupération des ingrédients originaux
                                     orig_ing_resp = supabase.table("recipe_ingredients")\
                                         .select("ingredient_id, quantity")\
                                         .eq("recipe_id", target_recipe["id"]).execute()
                                     
                                     orig_ings = orig_ing_resp.data
                                     
-                                    # 3. Copie des ingrédients vers la nouvelle recette
                                     if orig_ings:
                                         new_ings_data = [
                                             {
@@ -280,7 +315,7 @@ with tab_recipes:
                     st.markdown("##### Ingrédients de la recette")
                     
                     curr_ing_resp = supabase.table("recipe_ingredients")\
-                        .select("id, quantity, ingredient_id, ingredients(name, unit)")\
+                        .select("id, quantity, ingredient_id, ingredients(name, unit, exclude_from_list, is_recurrent)")\
                         .eq("recipe_id", target_recipe["id"]).execute()
                     
                     curr_ingredients = curr_ing_resp.data
@@ -288,7 +323,15 @@ with tab_recipes:
                     if curr_ingredients:
                         for c_ing in curr_ingredients:
                             c_col1, c_col2, c_col3 = st.columns([3, 2, 1])
-                            c_col1.write(f"• **{c_ing['ingredients']['name']}**")
+                            
+                            tags = []
+                            if c_ing['ingredients'].get('exclude_from_list'):
+                                tags.append("Fond de placard")
+                            if c_ing['ingredients'].get('is_recurrent'):
+                                tags.append("Récurrent")
+                            
+                            tag_str = f" *({', '.join(tags)})*" if tags else ""
+                            c_col1.write(f"• **{c_ing['ingredients']['name']}**{tag_str}")
                             c_col2.write(f"{c_ing['quantity']} {c_ing['ingredients']['unit']}")
                             if c_col3.button("❌", key=f"del_rel_{c_ing['id']}"):
                                 supabase.table("recipe_ingredients").delete().eq("id", c_ing["id"]).execute()
