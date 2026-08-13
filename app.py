@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import datetime
 import base64
 from fpdf import FPDF
@@ -25,7 +26,6 @@ def clean_pdf_text(text: str) -> str:
     """Nettoie le texte pour éviter les erreurs d'encodage FPDF avec Helvetica."""
     if not text:
         return ""
-    # Remplace les puces et guillemets spéciaux
     replacements = {
         "•": "-",
         "’": "'",
@@ -36,7 +36,6 @@ def clean_pdf_text(text: str) -> str:
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    # Convertit en Latin-1 en ignorant les caractères incompatibles
     return text.encode("latin-1", "replace").decode("latin-1")
 
 # --- FONCTIONS DE CHARGEMENT DES DONNÉES ---
@@ -316,25 +315,50 @@ with tab_planning:
         formatted_list = [f"{it['name']} ({it['persons']}p)" for it in items_list]
         pdf_planning_dict[(d, mt)] = " + ".join(formatted_list)
 
-    if st.button("📄 Générer et ouvrir le PDF du menu", type="primary"):
+    if st.button("📄 Générer le PDF du menu", type="primary"):
         pdf_bytes = generate_pdf(pdf_planning_dict, shopping_list, recurring_items, DAYS, start_str, end_str)
         b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-        
-        html_button = f'''
-            <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" style="
+
+        # Bouton JavaScript qui convertit le Base64 en Blob URL et l'ouvre dans un nouvel onglet
+        js_code = f"""
+            <button id="open-pdf-btn" style="
                 display: inline-block;
                 padding: 12px 24px;
                 color: white;
                 background-color: #007bff;
-                text-decoration: none;
+                border: none;
                 border-radius: 6px;
                 font-weight: bold;
                 font-size: 16px;
-                margin-top: 15px;">
-                🔗 Cliquez ici pour ouvrir le PDF dans un nouvel onglet
-            </a>
-        '''
-        st.markdown(html_button, unsafe_allow_html=True)
+                cursor: pointer;">
+                🔗 Cliquer ici pour ouvrir le PDF dans un nouvel onglet
+            </button>
+
+            <script>
+            document.getElementById("open-pdf-btn").addEventListener("click", function() {{
+                const b64Data = "{b64_pdf}";
+                const byteCharacters = atob(b64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {{
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }}
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {{ type: "application/pdf" }});
+                const blobUrl = URL.createObjectURL(blob);
+                window.open(blobUrl, "_blank");
+            }});
+            </script>
+        """
+        
+        components.html(js_code, height=60)
+
+        # Alternative direct de téléchargement
+        st.download_button(
+            label="📥 Télécharger directement le PDF",
+            data=pdf_bytes,
+            file_name=f"menu_{start_str.replace('/', '-')}.pdf",
+            mime="application/pdf"
+        )
 
 # =============================================================================
 # ONGLET 2 : GESTION DES RECETTES
