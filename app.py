@@ -258,6 +258,12 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         day_block_width = 15
         
+        # Calculer la hauteur minimale pour "Dimanche" en vertical
+        # En rotation 90°, la largeur devient la hauteur
+        pdf.set_font('Helvetica', 'B', day_font_size)
+        min_day_text_width = pdf.get_string_width('Dimanche') + 4  # + marge
+        min_block_height = max(min_day_text_width, 20)  # Minimum 20mm de hauteur
+        
         # Hauteur disponible
         available_days_height = page_height - margin - y - 5
         
@@ -274,7 +280,8 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             midi_height = (midi_lines * (meal_line_height + meal_spacing)) + 2
             soir_height = (soir_lines * (meal_line_height + meal_spacing)) + 2
             interline = 2
-            block_height = max(midi_height + interline + soir_height + 3, day_line_height + 4)
+            # Utiliser le maximum entre la hauteur du contenu et la hauteur minimale pour le jour
+            block_height = max(midi_height + interline + soir_height + 3, min_block_height)
             total_needed_height += block_height + 2
         
         # Ajuster si nécessaire
@@ -283,6 +290,10 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             meal_line_height = max(3.5, meal_line_height * scale)
             meal_spacing = max(0.5, meal_spacing * scale)
             day_line_height = max(5, day_line_height * scale)
+            # Recalculer la hauteur minimale avec la nouvelle taille
+            pdf.set_font('Helvetica', 'B', day_font_size)
+            min_day_text_width = pdf.get_string_width('Dimanche') + 4
+            min_block_height = max(min_day_text_width * scale, 15)
         
         # Affichage des jours
         for i, day_info in enumerate(week_days):
@@ -297,7 +308,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             midi_height = (midi_lines * (meal_line_height + meal_spacing)) + 2
             soir_height = (soir_lines * (meal_line_height + meal_spacing)) + 2
             interline = 2
-            block_height = max(midi_height + interline + soir_height + 3, day_line_height + 4)
+            block_height = max(midi_height + interline + soir_height + 3, min_block_height)
             
             if y + block_height > page_height - margin:
                 break
