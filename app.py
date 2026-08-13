@@ -923,156 +923,178 @@ def main():
     # ONGLET 4 : MENUS & COURSES
     # ============================
     with tab_menus:
-        st.header("Menus & Liste de courses")
-
+        st.header("Planification des menus")
+        
+        # Données
         planned_meals = st.session_state.data.get('planned_meals', [])
         recipes = st.session_state.data.get('recipes', [])
         recipes_dict = {r['id']: r for r in recipes}
-        ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
-        recipe_ings = st.session_state.data.get('recipe_ingredients', [])
-
-        col_plan, col_list = st.columns([1, 1])
-
-        # --- PLANIFICATION ---
-        with col_plan:
-            st.subheader("📅 Planification des repas")
-
-            if not recipes:
-                st.warning("Créez d'abord des recettes !")
-            else:
-                with st.form("add_meal_form"):
-                    col_day, col_meal = st.columns(2)
-                    day = col_day.selectbox("Jour", JOURS, key="meal_day")
-                    meal_type = col_meal.selectbox("Repas", REPAS, key="meal_type")
-                    
-                    recipe_names = [r['name'] for r in recipes]
-                    recipe_name = st.selectbox("Recette", recipe_names, key="meal_recipe")
-                    recipe = next((r for r in recipes if r['name'] == recipe_name), None)
-                    
-                    servings = st.number_input(
-                        "Nombre de convives", 
-                        min_value=1, 
-                        value=recipe.get('base_servings', 4) if recipe else 4,
-                        key="meal_servings"
-                    )
-                    
-                    if st.form_submit_button("➕ Ajouter au planning", use_container_width=True):
-                        if recipe:
-                            try:
-                                supabase.table("planned_meals").insert({
-                                    "day": day,
-                                    "meal_type": meal_type,
-                                    "recipe_id": recipe['id'],
-                                    "servings": servings
-                                }).execute()
-                                st.success("Repas ajouté !")
-                                refresh_data()
-                            except Exception as e:
-                                st.error(f"Erreur : {e}")
-
-            # Affichage du planning
-            st.markdown("---")
-            st.subheader("Planning de la semaine")
+        
+        if not recipes:
+            st.warning("Créez d'abord des recettes dans l'onglet 'Créer / Éditer' !")
+        else:
+            # Sélection de la date de début
+            from datetime import date, timedelta
             
-            if not planned_meals:
-                st.info("Aucun repas planifié pour le moment.")
-            else:
-                by_day = defaultdict(list)
-                for pm in planned_meals:
-                    by_day[pm['day']].append(pm)
-
-                for day in JOURS:
-                    if day in by_day:
-                        st.markdown(f"**{day}**")
-                        for pm in by_day[day]:
-                            rec_name = recipes_dict.get(pm['recipe_id'], {}).get('name', 'Inconnu')
-                            col1, col2 = st.columns([5, 1])
-                            col1.write(f"• {pm['meal_type']} : {rec_name} ({pm['servings']} pers.)")
-                            if col2.button("❌", key=f"del_pm_{pm['id']}", help="Supprimer ce repas"):
-                                try:
-                                    supabase.table("planned_meals").delete().eq("id", pm['id']).execute()
-                                    refresh_data()
-                                except Exception as e:
-                                    st.error(f"Erreur : {e}")
-
-                if st.button("🗑️ Vider tout le planning", key="clear_planning", use_container_width=True):
+            col_calendar, col_info = st.columns([1, 3])
+            with col_calendar:
+                start_date = st.date_input(
+                    "Date de début",
+                    value=date.today(),
+                    key="week_start_date"
+                )
+            with col_info:
+                st.info(f"📅 Semaine du {start_date.strftime('%d/%m/%Y')} au {(start_date + timedelta(days=6)).strftime('%d/%m/%Y')}")
+            
+            st.markdown("---")
+            
+            # Génération des 7 jours à partir de la date sélectionnée
+            week_days = []
+            for i in range(7):
+                current_date = start_date + timedelta(days=i)
+                week_days.append({
+                    'date': current_date,
+                    'day_name': current_date.strftime('%A').capitalize(),
+                    'day_number': current_date.strftime('%d/%m'),
+                    'is_today': current_date == date.today()
+                })
+            
+            # Affichage de la semaine
+            for day_info in week_days:
+                # Création d'une carte pour chaque jour
+                with st.container():
+                    # En-tête du jour
+                    col_day, col_border = st.columns([1, 5])
+                    
+                    # Style spécial pour aujourd'hui
+                    if day_info['is_today']:
+                        day_label = f"### 📍 {day_info['day_name']} {day_info['day_number']} (Aujourd'hui)"
+                    else:
+                        day_label = f"### 📅 {day_info['day_name']} {day_info['day_number']}"
+                    
+                    st.markdown(day_label)
+                    
+                    # Récupération des repas pour ce jour
+                    day_meals = [pm for pm in planned_meals if pm['day'] == day_info['day_name']]
+                    
+                    # Affichage des repas existants
+                    if day_meals:
+                        for meal in day_meals:
+                            rec_name = recipes_dict.get(meal['recipe_id'], {}).get('name', 'Inconnu')
+                            col_meal, col_del = st.columns([5, 1])
+                            with col_meal:
+                                st.markdown(f"**{meal['meal_type']}** : {rec_name} ({meal['servings']} pers.)")
+                            with col_del:
+                                if st.button("❌", key=f"del_meal_{meal['id']}", help="Supprimer"):
+                                    try:
+                                        supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                                        refresh_data()
+                                    except Exception as e:
+                                        st.error(f"Erreur : {e}")
+                    else:
+                        st.caption("Aucun repas planifié")
+                    
+                    # Ajout d'un repas pour ce jour
+                    with st.expander(f"➕ Ajouter un repas", expanded=False):
+                        col_meal_type, col_recipe = st.columns([1, 2])
+                        with col_meal_type:
+                            meal_type = st.selectbox(
+                                "Repas",
+                                REPAS,
+                                key=f"meal_type_{day_info['day_name']}_{day_info['day_number']}"
+                            )
+                        with col_recipe:
+                            recipe_names = [r['name'] for r in recipes]
+                            recipe_name = st.selectbox(
+                                "Recette",
+                                recipe_names,
+                                key=f"recipe_{day_info['day_name']}_{day_info['day_number']}"
+                            )
+                            recipe = next((r for r in recipes if r['name'] == recipe_name), None)
+                        
+                        col_servings, col_add = st.columns([1, 1])
+                        with col_servings:
+                            servings = st.number_input(
+                                "Convives",
+                                min_value=1,
+                                value=recipe.get('base_servings', 4) if recipe else 4,
+                                key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
+                            )
+                        with col_add:
+                            st.write("")
+                            st.write("")
+                            if st.button("➕ Ajouter", key=f"add_meal_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
+                                if recipe:
+                                    try:
+                                        supabase.table("planned_meals").insert({
+                                            "day": day_info['day_name'],
+                                            "meal_type": meal_type,
+                                            "recipe_id": recipe['id'],
+                                            "servings": servings
+                                        }).execute()
+                                        st.success(f"✅ Repas ajouté pour {day_info['day_name']} !")
+                                        refresh_data()
+                                    except Exception as e:
+                                        st.error(f"Erreur : {e}")
+                    
+                    st.markdown("---")
+            
+            # Actions en bas
+            st.markdown("---")
+            col_export, col_clear = st.columns(2)
+            
+            with col_export:
+                if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
+                    # Calcul de la liste de courses pour le PDF
+                    ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
+                    recipe_ings = st.session_state.data.get('recipe_ingredients', [])
+                    
+                    # Agrégation des ingrédients
+                    aggregated = {}
+                    for pm in planned_meals:
+                        rec = recipes_dict.get(pm['recipe_id'])
+                        if not rec:
+                            continue
+                        ratio = pm['servings'] / rec.get('base_servings', 1)
+                        for ri in recipe_ings:
+                            if ri['recipe_id'] == pm['recipe_id']:
+                                ing = ingredients_dict.get(ri['ingredient_id'])
+                                if not ing or ing.get('exclude_from_list'):
+                                    continue
+                                qty = ri['quantity'] * ratio
+                                if ing['id'] not in aggregated:
+                                    aggregated[ing['id']] = {
+                                        "name": ing['name'],
+                                        "qty": 0,
+                                        "unit": ing['unit'],
+                                        "category": ing.get('category', 'Autre')
+                                    }
+                                aggregated[ing['id']]['qty'] += qty
+                    
+                    # Produits récurrents
+                    recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
+                    
+                    pdf_bytes = generate_pdf(planned_meals, aggregated, recurrent, recipes_dict)
+                    if pdf_bytes:
+                        st.download_button(
+                            "📥 Télécharger le PDF",
+                            data=pdf_bytes,
+                            file_name=f"menu_semaine_{start_date.strftime('%Y%m%d')}.pdf",
+                            mime="application/pdf",
+                            key="download_pdf_btn",
+                            use_container_width=True
+                        )
+            
+            with col_clear:
+                if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
                     try:
-                        supabase.table("planned_meals").delete().neq("id", 0).execute()
-                        st.success("Planning vidé !")
+                        # Supprimer uniquement les repas de cette semaine
+                        days_to_clear = [d['day_name'] for d in week_days]
+                        for day_name in days_to_clear:
+                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
+                            for meal in meals_to_delete:
+                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                        st.success("✅ Semaine vidée !")
                         refresh_data()
                     except Exception as e:
                         st.error(f"Erreur : {e}")
-
-        # --- LISTE DE COURSES ---
-        with col_list:
-            st.subheader("🛒 Liste de courses")
-
-            # Agrégation des ingrédients
-            aggregated = {}
-            for pm in planned_meals:
-                rec = recipes_dict.get(pm['recipe_id'])
-                if not rec:
-                    continue
-                ratio = pm['servings'] / rec.get('base_servings', 1)
-                for ri in recipe_ings:
-                    if ri['recipe_id'] == pm['recipe_id']:
-                        ing = ingredients_dict.get(ri['ingredient_id'])
-                        if not ing or ing.get('exclude_from_list'):
-                            continue
-                        qty = ri['quantity'] * ratio
-                        if ing['id'] not in aggregated:
-                            aggregated[ing['id']] = {
-                                "name": ing['name'],
-                                "qty": 0,
-                                "unit": ing['unit'],
-                                "category": ing.get('category', 'Autre')
-                            }
-                        aggregated[ing['id']]['qty'] += qty
-
-            if not aggregated:
-                st.info("Ajoutez des repas au planning pour générer la liste de courses.")
-            else:
-                st.markdown("**Par rayon :**")
-                by_cat = defaultdict(list)
-                for item in aggregated.values():
-                    by_cat[item['category']].append(item)
-
-                for rayon in RAYONS:
-                    if rayon in by_cat:
-                        st.markdown(f"**{rayon}**")
-                        for item in by_cat[rayon]:
-                            qty_str = format_quantity(item['qty'])
-                            st.checkbox(
-                                f"{item['name']} : {qty_str} {item['unit']}",
-                                key=f"shop_{item['name']}_{rayon}"
-                            )
-
-            # Produits récurrents
-            st.markdown("---")
-            st.subheader("🔁 Produits récurrents")
-            recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
-            if recurrent:
-                for item in recurrent:
-                    st.checkbox(
-                        f"{item['name']} ({item.get('category', 'Autre')})",
-                        key=f"rec_{item['id']}"
-                    )
-            else:
-                st.caption("Aucun produit récurrent configuré.")
-
-            # Export PDF
-            st.markdown("---")
-            if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
-                pdf_bytes = generate_pdf(planned_meals, aggregated, recurrent, recipes_dict)
-                if pdf_bytes:
-                    st.download_button(
-                        "📥 Télécharger le PDF",
-                        data=pdf_bytes,
-                        file_name=f"menu_semaine_{datetime.now().strftime('%Y%m%d')}.pdf",
-                        mime="application/pdf",
-                        key="download_pdf_btn",
-                        use_container_width=True
-                    )
-
-if __name__ == "__main__":
-    main()
