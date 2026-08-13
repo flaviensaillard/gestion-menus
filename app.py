@@ -182,7 +182,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         title_font_size = 28
         period_font_size = 20
         day_font_size = 13
-        meal_font_size = 11  # Même taille pour tout (plats et titres de repas)
+        meal_font_size = 11
         courses_font_size = 10
         
         # Hauteurs de ligne fixes
@@ -452,6 +452,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
     except Exception as e:
         st.error(f"Erreur lors de la génération du PDF : {e}")
         return b""
+
 # ------------------------------
 # INTERFACE PRINCIPALE
 # ------------------------------
@@ -569,8 +570,13 @@ def main():
                     else:
                         st.caption("Aucun repas planifié")
                     
-                    # Ajout d'un repas
-                    with st.expander(f"➕ Ajouter", expanded=False):
+                    # Ajout d'un repas avec expander persistant
+                    expander_key = f"expander_{day_info['day_name']}_{day_info['day_number']}"
+                    
+                    if expander_key not in st.session_state:
+                        st.session_state[expander_key] = False
+                    
+                    with st.expander(f"➕ Ajouter", expanded=st.session_state[expander_key]):
                         col_type, col_meal_type = st.columns([1, 1])
                         with col_type:
                             item_type = st.radio(
@@ -634,55 +640,64 @@ def main():
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
                                 )
                         
-                        if st.button("➕ Ajouter", key=f"add_meal_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
-                            try:
-                                if item_type == "Recette" and selected_recipe:
-                                    supabase.table("planned_meals").insert({
-                                        "day": day_info['day_name'],
-                                        "meal_type": meal_type,
-                                        "recipe_id": selected_recipe['id'],
-                                        "servings": servings
-                                    }).execute()
-                                elif item_type == "Ingrédient":
-                                    ing_obj = next((i for i in ingredients if i['name'] == selected_item), None)
-                                    if ing_obj:
-                                        existing_ing_recipe = next(
-                                            (r for r in all_recipes if r['name'] == f"[Ing] {ing_obj['name']}"),
-                                            None
-                                        )
-                                        
-                                        if existing_ing_recipe:
-                                            ing_recipe_id = existing_ing_recipe['id']
-                                        else:
-                                            temp_recipe = supabase.table("recipes").insert({
-                                                "name": f"[Ing] {ing_obj['name']}",
-                                                "base_servings": 1,
-                                                "instructions": ""
-                                            }).execute()
-                                            
-                                            if temp_recipe.data:
-                                                ing_recipe_id = temp_recipe.data[0]['id']
-                                                
-                                                supabase.table("recipe_ingredients").insert({
-                                                    "recipe_id": ing_recipe_id,
-                                                    "ingredient_id": ing_obj['id'],
-                                                    "quantity": 1
-                                                }).execute()
-                                            else:
-                                                st.error("Erreur lors de la création")
-                                                st.stop()
-                                        
+                        col_add_btn, col_close_btn = st.columns(2)
+                        
+                        with col_add_btn:
+                            if st.button("➕ Ajouter", key=f"add_meal_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
+                                try:
+                                    if item_type == "Recette" and selected_recipe:
                                         supabase.table("planned_meals").insert({
                                             "day": day_info['day_name'],
                                             "meal_type": meal_type,
-                                            "recipe_id": ing_recipe_id,
+                                            "recipe_id": selected_recipe['id'],
                                             "servings": servings
                                         }).execute()
-                                
-                                st.success(f"✅ Ajouté pour {day_info['day_name']} !")
-                                refresh_data()
-                            except Exception as e:
-                                st.error(f"Erreur : {e}")
+                                    elif item_type == "Ingrédient":
+                                        ing_obj = next((i for i in ingredients if i['name'] == selected_item), None)
+                                        if ing_obj:
+                                            existing_ing_recipe = next(
+                                                (r for r in all_recipes if r['name'] == f"[Ing] {ing_obj['name']}"),
+                                                None
+                                            )
+                                            
+                                            if existing_ing_recipe:
+                                                ing_recipe_id = existing_ing_recipe['id']
+                                            else:
+                                                temp_recipe = supabase.table("recipes").insert({
+                                                    "name": f"[Ing] {ing_obj['name']}",
+                                                    "base_servings": 1,
+                                                    "instructions": ""
+                                                }).execute()
+                                                
+                                                if temp_recipe.data:
+                                                    ing_recipe_id = temp_recipe.data[0]['id']
+                                                    
+                                                    supabase.table("recipe_ingredients").insert({
+                                                        "recipe_id": ing_recipe_id,
+                                                        "ingredient_id": ing_obj['id'],
+                                                        "quantity": 1
+                                                    }).execute()
+                                                else:
+                                                    st.error("Erreur lors de la création")
+                                                    st.stop()
+                                            
+                                            supabase.table("planned_meals").insert({
+                                                "day": day_info['day_name'],
+                                                "meal_type": meal_type,
+                                                "recipe_id": ing_recipe_id,
+                                                "servings": servings
+                                            }).execute()
+                                    
+                                    st.success(f"✅ Ajouté pour {day_info['day_name']} !")
+                                    st.session_state[expander_key] = True
+                                    refresh_data()
+                                except Exception as e:
+                                    st.error(f"Erreur : {e}")
+                        
+                        with col_close_btn:
+                            if st.button("Fermer", key=f"close_expander_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
+                                st.session_state[expander_key] = False
+                                st.rerun()
                     
                     st.markdown("---")
             
