@@ -157,36 +157,39 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
     """Génère un PDF A4 avec le menu et la liste de courses."""
     try:
         pdf = FPDF(format='A4', unit='mm')
-        pdf.set_auto_page_break(auto=True, margin=10)
+        pdf.set_auto_page_break(auto=False)  # Pas de saut de page automatique
         pdf.add_page()
 
-        # Largeurs des colonnes
-        left_width = 125
-        right_width = 65
-        margin_left = 10
+        # Dimensions
+        page_width = 210
+        page_height = 297
+        margin = 10
+        left_width = 120  # 2/3 de la largeur utile
+        right_width = 70   # 1/3 de la largeur utile
+        gap = 5  # Espace entre les colonnes
         
         # En-tête
-        pdf.set_font('Helvetica', 'B', 18)
-        pdf.cell(0, 12, clean_pdf_str('Menus de la semaine'), ln=True, align='C')
+        pdf.set_font('Helvetica', 'B', 16)
+        pdf.cell(0, 10, clean_pdf_str('Menus de la semaine'), ln=True, align='C')
         
         if start_date:
             end_date = start_date + timedelta(days=6)
-            pdf.set_font('Helvetica', 'I', 11)
-            pdf.cell(0, 7, clean_pdf_str(f'Période du {start_date.strftime("%d/%m/%Y")} au {end_date.strftime("%d/%m/%Y")}'), ln=True, align='C')
+            pdf.set_font('Helvetica', '', 10)
+            pdf.cell(0, 6, clean_pdf_str(f'Du {start_date.strftime("%d/%m/%Y")} au {end_date.strftime("%d/%m/%Y")}'), ln=True, align='C')
         
-        pdf.set_font('Helvetica', 'I', 9)
-        pdf.cell(0, 5, clean_pdf_str(f'Généré le {datetime.now().strftime("%d/%m/%Y")}'), ln=True, align='C')
-        pdf.ln(5)
-
+        pdf.ln(3)
+        
+        # Positions de départ
         y_start = pdf.get_y()
+        left_x = margin
+        right_x = margin + left_width + gap
         
-        # ==================== COLONNE GAUCHE (2/3) ====================
-        pdf.set_font('Helvetica', 'B', 13)
-        pdf.set_fill_color(240, 240, 240)
-        pdf.set_x(margin_left)
-        pdf.cell(left_width, 9, 'Planning des Repas', ln=True, fill=True)
-        pdf.ln(2)
-
+        # ==================== COLONNE GAUCHE : PLANNING ====================
+        pdf.set_xy(left_x, y_start)
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(left_width, 8, 'Planning des Repas', ln=True, fill=True, align='C')
+        
         # Générer les 7 jours
         if start_date:
             week_days = []
@@ -195,13 +198,12 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 english_day = current_date.strftime('%A')
                 french_day = JOURS_FR.get(english_day, english_day)
                 week_days.append({
-                    'date': current_date,
                     'day_name': french_day,
                     'day_number': current_date.strftime('%d/%m')
                 })
         else:
             week_days = [{'day_name': d, 'day_number': ''} for d in JOURS]
-
+        
         # Regrouper les repas
         schedule = {}
         for day_info in week_days:
@@ -219,9 +221,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     meal_type = pm.get('meal_type')
                     if meal_type in schedule[day_name]:
                         schedule[day_name][meal_type].append(rec_name)
-
+        
         # Affichage des jours
-        pdf.set_font('Helvetica', size=9)
+        y = pdf.get_y() + 2
         
         for i, day_info in enumerate(week_days):
             day_name = day_info['day_name']
@@ -229,114 +231,133 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             midi_items = schedule[day_name]['Midi']
             soir_items = schedule[day_name]['Soir']
-            max_items = max(len(midi_items), len(soir_items), 1)
-            day_height = 7 + (max_items * 5)
             
-            if pdf.get_y() + day_height > 280:
-                pdf.add_page()
+            # Calculer la hauteur du bloc jour
+            day_height = 6  # En-tête du jour
+            day_height += 5 + (len(midi_items) * 4) if midi_items else 9
+            day_height += 5 + (len(soir_items) * 4) if soir_items else 9
+            day_height += 2  # Espacement
             
+            # Vérifier si on a assez de place
+            if y + day_height > page_height - margin:
+                break  # On s'arrête si plus de place
+            
+            # En-tête du jour
+            pdf.set_xy(left_x, y)
             if i % 2 == 0:
-                pdf.set_fill_color(250, 250, 250)
+                pdf.set_fill_color(245, 245, 245)
             else:
-                pdf.set_fill_color(240, 240, 240)
+                pdf.set_fill_color(235, 235, 235)
             
-            pdf.set_x(margin_left)
+            pdf.set_font('Helvetica', 'B', 9)
             if day_number:
                 day_label = f"{day_name} {day_number}"
             else:
                 day_label = day_name
+            pdf.cell(left_width, 6, clean_pdf_str(day_label), border=1, fill=True, ln=True)
             
-            pdf.set_font('Helvetica', 'B', 10)
-            pdf.cell(left_width, 7, clean_pdf_str(day_label), border=1, fill=True, ln=True)
+            y += 6
             
             # Déjeuner
-            pdf.set_x(margin_left)
+            pdf.set_xy(left_x + 2, y)
             pdf.set_font('Helvetica', 'B', 8)
-            pdf.cell(30, 5, 'Déjeuner:', border=0)
+            pdf.cell(25, 4, 'Déjeuner:', border=0)
             
             if midi_items:
                 pdf.set_font('Helvetica', size=8)
-                midi_text = ", ".join(midi_items)
-                pdf.cell(left_width - 30, 5, clean_pdf_str(midi_text)[:70], border=0, ln=True)
+                for item in midi_items:
+                    pdf.set_xy(left_x + 27, y)
+                    pdf.cell(left_width - 30, 4, clean_pdf_str(item)[:60], border=0, ln=True)
+                    y += 4
             else:
                 pdf.set_font('Helvetica', 'I', 8)
-                pdf.cell(left_width - 30, 5, '-', border=0, ln=True)
+                pdf.set_xy(left_x + 27, y)
+                pdf.cell(left_width - 30, 4, '-', border=0, ln=True)
+                y += 4
+            
+            y += 1  # Petit espace
             
             # Dîner
-            pdf.set_x(margin_left)
+            pdf.set_xy(left_x + 2, y)
             pdf.set_font('Helvetica', 'B', 8)
-            pdf.cell(30, 5, 'Dîner:', border=0)
+            pdf.cell(25, 4, 'Dîner:', border=0)
             
             if soir_items:
                 pdf.set_font('Helvetica', size=8)
-                soir_text = ", ".join(soir_items)
-                pdf.cell(left_width - 30, 5, clean_pdf_str(soir_text)[:70], border=0, ln=True)
+                for item in soir_items:
+                    pdf.set_xy(left_x + 27, y)
+                    pdf.cell(left_width - 30, 4, clean_pdf_str(item)[:60], border=0, ln=True)
+                    y += 4
             else:
                 pdf.set_font('Helvetica', 'I', 8)
-                pdf.cell(left_width - 30, 5, '-', border=0, ln=True)
+                pdf.set_xy(left_x + 27, y)
+                pdf.cell(left_width - 30, 4, '-', border=0, ln=True)
+                y += 4
             
-            pdf.ln(2)
-
-        # ==================== COLONNE DROITE (1/3) ====================
-        right_x = margin_left + left_width + 5
-        pdf.set_y(y_start)
-        pdf.set_x(right_x)
-        pdf.set_font('Helvetica', 'B', 13)
-        pdf.set_fill_color(240, 240, 240)
-        pdf.cell(right_width, 9, 'Liste de Courses', ln=True, fill=True)
-        pdf.ln(2)
-
+            y += 2  # Espace entre les jours
+        
+        # ==================== COLONNE DROITE : LISTE DE COURSES ====================
+        y_right = y_start
+        pdf.set_xy(right_x, y_right)
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(right_width, 8, 'Liste de Courses', ln=True, fill=True, align='C')
+        
+        y_right += 10
+        
         by_cat = defaultdict(list)
         for item in aggregated_items.values():
             by_cat[item.get('category', 'Autre')].append(item)
-
+        
         if not by_cat:
-            pdf.set_x(right_x)
+            pdf.set_xy(right_x, y_right)
             pdf.set_font('Helvetica', 'I', 8)
             pdf.cell(right_width, 5, 'Aucun article', ln=True)
+            y_right += 5
         else:
             for cat in RAYONS:
                 if cat in by_cat:
-                    if pdf.get_y() > 270:
-                        pdf.add_page()
-                        pdf.set_y(15)
+                    # Vérifier l'espace
+                    if y_right > page_height - margin - 50:
+                        break
                     
-                    pdf.set_x(right_x)
-                    pdf.set_font('Helvetica', 'B', 9)
-                    pdf.set_fill_color(230, 230, 230)
-                    pdf.cell(right_width, 6, clean_pdf_str(cat), ln=True, fill=True)
+                    pdf.set_xy(right_x, y_right)
+                    pdf.set_font('Helvetica', 'B', 8)
+                    pdf.set_fill_color(220, 220, 220)
+                    pdf.cell(right_width, 5, clean_pdf_str(cat), ln=True, fill=True)
+                    y_right += 5
                     
-                    pdf.set_font('Helvetica', size=8)
+                    pdf.set_font('Helvetica', size=7)
                     for it in by_cat[cat]:
-                        if pdf.get_y() > 270:
-                            pdf.add_page()
-                            pdf.set_y(15)
+                        if y_right > page_height - margin - 50:
+                            break
                         
                         qty_str = format_quantity(it['qty'])
                         line = f"[ ] {it['name']} : {qty_str} {it['unit']}"
-                        pdf.set_x(right_x + 2)
-                        pdf.cell(right_width - 4, 4.5, clean_pdf_str(line), ln=True)
+                        pdf.set_xy(right_x + 2, y_right)
+                        pdf.cell(right_width - 4, 3.5, clean_pdf_str(line), ln=True)
+                        y_right += 3.5
                     
-                    pdf.ln(1)
-
-        # Produits récurrents
-        if recurrent_items:
-            pdf.set_x(right_x)
-            pdf.set_y(pdf.get_y() + 3)
-            pdf.set_font('Helvetica', 'B', 11)
-            pdf.set_fill_color(240, 240, 240)
-            pdf.cell(right_width, 7, 'Produits récurrents', ln=True, fill=True)
-            pdf.ln(1)
+                    y_right += 1
+        
+        # ==================== PRODUITS RÉCURRENTS ====================
+        if recurrent_items and y_right < page_height - margin - 20:
+            y_right += 3
+            pdf.set_xy(right_x, y_right)
+            pdf.set_font('Helvetica', 'B', 10)
+            pdf.set_fill_color(230, 230, 230)
+            pdf.cell(right_width, 6, 'Produits récurrents', ln=True, fill=True, align='C')
+            y_right += 8
             
-            pdf.set_font('Helvetica', size=8)
+            pdf.set_font('Helvetica', size=7)
             for rec in recurrent_items:
-                if pdf.get_y() > 270:
-                    pdf.add_page()
-                    pdf.set_y(15)
+                if y_right > page_height - margin - 5:
+                    break
                 
                 txt = f"[ ] {rec['name']}"
-                pdf.set_x(right_x + 2)
-                pdf.cell(right_width - 4, 4.5, clean_pdf_str(txt), ln=True)
+                pdf.set_xy(right_x + 2, y_right)
+                pdf.cell(right_width - 4, 3.5, clean_pdf_str(txt), ln=True)
+                y_right += 3.5
 
         return bytes(pdf.output())
     
