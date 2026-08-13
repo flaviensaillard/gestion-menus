@@ -72,44 +72,19 @@ def clean_pdf_str(text: Any) -> str:
     """Nettoie les chaînes pour FPDF (supprime les emojis et caractères spéciaux)."""
     if not text:
         return ""
-    # Remplacer les caractères problématiques
+    
     replacements = {
-        '✂️': '-',
-        '🍽️': '',
-        '📖': '',
-        '📝': '',
-        '🛒': '',
-        '•': '-',
-        'é': 'e',
-        'è': 'e',
-        'ê': 'e',
-        'à': 'a',
-        'ç': 'c',
-        'ù': 'u',
-        'ô': 'o',
-        'î': 'i',
-        'ï': 'i',
-        'É': 'E',
-        'È': 'E',
-        'Ê': 'E',
-        'À': 'A',
-        'Ç': 'C',
-        'Ù': 'U',
-        'Ô': 'O',
-        'Î': 'I',
-        'Ï': 'I',
-        '€': 'EUR',
-        '"': '"',
-        '"': '"',
-        ''': "'",
-        ''': "'",
+        '✂️': '-', '🍽️': '', '📖': '', '📝': '', '🛒': '', '•': '-',
+        'é': 'e', 'è': 'e', 'ê': 'e', 'à': 'a', 'ç': 'c', 'ù': 'u',
+        'ô': 'o', 'î': 'i', 'ï': 'i', 'É': 'E', 'È': 'E', 'Ê': 'E',
+        'À': 'A', 'Ç': 'C', 'Ù': 'U', 'Ô': 'O', 'Î': 'I', 'Ï': 'I',
+        '€': 'EUR', '"': '"', '"': '"', ''': "'", ''': "'",
     }
     
     result = str(text)
     for old, new in replacements.items():
         result = result.replace(old, new)
     
-    # Encodage Latin-1 avec remplacement des caractères non supportés
     return result.encode('latin-1', 'replace').decode('latin-1')
 
 def format_quantity(qty: float) -> str:
@@ -167,7 +142,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             pdf.cell(80, 7, clean_pdf_str(schedule[day]['Soir'])[:50], border=1, ln=True, fill=True)
 
         pdf.ln(8)
-        # Ligne de découpe simple
         pdf.set_dash_pattern(dash=2, gap=2)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.set_dash_pattern()
@@ -237,12 +211,16 @@ def main():
     if 'data' not in st.session_state:
         st.session_state.data = load_data()
 
-    tab_ingredients, tab_recettes, tab_menus = st.tabs([
-        "🥕 Ingrédients", "📖 Recettes", "📅 Menus & Courses"
+    # Navigation par onglets (4 onglets)
+    tab_ingredients, tab_consulter, tab_editer, tab_menus = st.tabs([
+        "🥕 Ingrédients", 
+        "🔍 Consulter", 
+        "✏️ Créer / Éditer", 
+        "📅 Menus & Courses"
     ])
 
     # ============================
-    # ONGLET INGRÉDIENTS
+    # ONGLET 1 : INGRÉDIENTS
     # ============================
     with tab_ingredients:
         st.header("Ingrédients")
@@ -374,10 +352,115 @@ def main():
             st.info("Aucun ingrédient pour le moment.")
 
     # ============================
-    # ONGLET RECETTES
+    # ONGLET 2 : CONSULTER UNE RECETTE
     # ============================
-    with tab_recettes:
-        st.header("Recettes")
+    with tab_consulter:
+        st.header("Consulter une recette")
+        
+        recipes = st.session_state.data.get('recipes', [])
+        recipe_ings = st.session_state.data.get('recipe_ingredients', [])
+        ingredients = st.session_state.data.get('ingredients', [])
+        
+        if not recipes:
+            st.info("Aucune recette disponible. Créez-en une dans l'onglet 'Créer / Éditer'.")
+        else:
+            # Sélection de la recette
+            recipe_names = [r['name'] for r in recipes]
+            selected_name = st.selectbox(
+                "Choisir une recette", 
+                recipe_names,
+                key="consult_recipe_select"
+            )
+            recipe = next((r for r in recipes if r['name'] == selected_name), None)
+            
+            if recipe:
+                st.markdown("---")
+                
+                # Affichage du nom et sélection du nombre de personnes
+                col_title, col_servings = st.columns([2, 1])
+                with col_title:
+                    st.subheader(f"📖 {recipe['name']}")
+                with col_servings:
+                    base_servings = recipe.get('base_servings', 4)
+                    target_servings = st.number_input(
+                        "Nombre de personnes",
+                        min_value=1,
+                        max_value=50,
+                        value=base_servings,
+                        step=1,
+                        key=f"consult_servings_{recipe['id']}"
+                    )
+                
+                # Calcul du ratio
+                ratio = target_servings / base_servings if base_servings > 0 else 1
+                
+                # Affichage des ingrédients avec quantités ajustées
+                st.markdown("### 🛒 Ingrédients")
+                
+                # Récupération des ingrédients de la recette
+                rec_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
+                
+                if rec_ings:
+                    # Création du tableau des ingrédients
+                    ing_data = []
+                    for ri in rec_ings:
+                        ing = next((i for i in ingredients if i['id'] == ri['ingredient_id']), None)
+                        if ing:
+                            qty_adjusted = ri['quantity'] * ratio
+                            qty_display = format_quantity(qty_adjusted)
+                            
+                            ing_data.append({
+                                "Ingrédient": ing['name'],
+                                "Quantité": qty_display,
+                                "Unité": ing['unit'],
+                                "Rayon": ing.get('category', 'Autre')
+                            })
+                    
+                    if ing_data:
+                        df_ingredients = pd.DataFrame(ing_data)
+                        st.dataframe(
+                            df_ingredients,
+                            hide_index=True,
+                            use_container_width=True,
+                            column_config={
+                                "Ingrédient": st.column_config.TextColumn("Ingrédient", width="medium"),
+                                "Quantité": st.column_config.TextColumn("Quantité", width="small"),
+                                "Unité": st.column_config.TextColumn("Unité", width="small"),
+                                "Rayon": st.column_config.TextColumn("Rayon", width="medium")
+                            }
+                        )
+                        
+                        # Affichage plus visuel (liste)
+                        st.markdown("---")
+                        st.markdown("**Liste détaillée :**")
+                        for item in ing_data:
+                            st.markdown(f"- **{item['Ingrédient']}** : {item['Quantité']} {item['Unité']} *({item['Rayon']})*")
+                else:
+                    st.info("Aucun ingrédient pour cette recette.")
+                
+                # Affichage des instructions
+                st.markdown("### 📝 Instructions")
+                if recipe.get('instructions'):
+                    st.write(recipe['instructions'])
+                else:
+                    st.info("Aucune instruction pour cette recette.")
+                
+                # Informations supplémentaires
+                st.markdown("---")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Personnes de base", base_servings)
+                with col2:
+                    if target_servings != base_servings:
+                        st.info(f"💡 Quantités ajustées pour {target_servings} personnes")
+                    else:
+                        st.success("✅ Quantités pour la recette de base")
+
+    # ============================
+    # ONGLET 3 : CRÉER / ÉDITER UNE RECETTE
+    # ============================
+    with tab_editer:
+        st.header("Créer / Éditer une recette")
 
         # Données
         recipes = st.session_state.data.get('recipes', [])
@@ -391,20 +474,20 @@ def main():
         # Formulaire nouvelle recette
         if st.session_state.get('show_add_recipe', False):
             with st.form("add_recipe_form"):
-                st.subheader("Créer une recette")
-                name = st.text_input("Nom *", key="new_recipe_name")
-                servings = st.number_input("Personnes", min_value=1, value=4, key="new_recipe_servings")
-                instructions = st.text_area("Instructions", height=100, key="new_recipe_instructions")
+                st.subheader("Créer une nouvelle recette")
+                name = st.text_input("Nom de la recette *", key="new_recipe_name")
+                servings = st.number_input("Nombre de personnes", min_value=1, value=4, key="new_recipe_servings")
+                instructions = st.text_area("Instructions de préparation", height=150, key="new_recipe_instructions")
                 
                 col_submit, col_cancel = st.columns(2)
                 with col_submit:
-                    submitted = st.form_submit_button("Créer", use_container_width=True)
+                    submitted = st.form_submit_button("Créer la recette", use_container_width=True)
                 with col_cancel:
                     cancelled = st.form_submit_button("Annuler", use_container_width=True)
                 
                 if submitted:
                     if not name.strip():
-                        st.error("Nom obligatoire")
+                        st.error("Le nom est obligatoire")
                     else:
                         try:
                             supabase.table("recipes").insert({
@@ -422,81 +505,95 @@ def main():
                     st.rerun()
 
         if not recipes:
-            st.info("Aucune recette disponible.")
+            st.info("Aucune recette à éditer. Créez-en une nouvelle !")
         else:
-            # Sélection d'une recette
+            # Sélection d'une recette à éditer
             recipe_names = [r['name'] for r in recipes]
             selected_name = st.selectbox(
-                "Choisir une recette", 
+                "Sélectionner une recette à modifier", 
                 recipe_names,
-                key="selected_recipe"
+                key="edit_recipe_select"
             )
             recipe = next((r for r in recipes if r['name'] == selected_name), None)
-
+            
             if recipe:
                 st.markdown("---")
                 
-                # En-tête avec actions
-                col_info, col_actions = st.columns([3, 2])
-                with col_info:
-                    st.subheader(f"📖 {recipe['name']}")
-                    base_servings = recipe.get('base_servings', 4)
-                    target_servings = st.number_input(
-                        "Personnes", 
-                        min_value=1, 
-                        max_value=50, 
-                        value=base_servings,
-                        key=f"servings_{recipe['id']}"
-                    )
-                    ratio = target_servings / base_servings
-                
-                with col_actions:
-                    st.write("")
-                    st.write("")
-                    col_dup, col_del = st.columns(2)
-                    with col_dup:
-                        if st.button("📋 Dupliquer", key=f"dup_{recipe['id']}", use_container_width=True):
-                            try:
-                                new_name = f"{recipe['name']} (copie)"
-                                new_rec = supabase.table("recipes").insert({
-                                    "name": new_name,
-                                    "base_servings": recipe['base_servings'],
-                                    "instructions": recipe.get('instructions', '')
+                # Actions rapides
+                col_dup, col_del = st.columns(2)
+                with col_dup:
+                    if st.button("📋 Dupliquer cette recette", key=f"dup_{recipe['id']}", use_container_width=True):
+                        try:
+                            new_name = f"{recipe['name']} (copie)"
+                            new_rec = supabase.table("recipes").insert({
+                                "name": new_name,
+                                "base_servings": recipe['base_servings'],
+                                "instructions": recipe.get('instructions', '')
+                            }).execute()
+                            new_id = new_rec.data[0]['id']
+                            
+                            orig_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
+                            for ri in orig_ings:
+                                supabase.table("recipe_ingredients").insert({
+                                    "recipe_id": new_id,
+                                    "ingredient_id": ri['ingredient_id'],
+                                    "quantity": ri['quantity']
                                 }).execute()
-                                new_id = new_rec.data[0]['id']
-                                
-                                orig_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
-                                for ri in orig_ings:
-                                    supabase.table("recipe_ingredients").insert({
-                                        "recipe_id": new_id,
-                                        "ingredient_id": ri['ingredient_id'],
-                                        "quantity": ri['quantity']
-                                    }).execute()
-                                refresh_data()
-                            except Exception as e:
-                                st.error(f"Erreur : {e}")
-                    with col_del:
-                        if st.button("🗑️ Supprimer", key=f"del_{recipe['id']}", use_container_width=True):
-                            try:
-                                supabase.table("recipes").delete().eq("id", recipe['id']).execute()
-                                refresh_data()
-                            except Exception as e:
-                                st.error(f"Erreur : {e}")
+                            st.success("Recette dupliquée !")
+                            refresh_data()
+                        except Exception as e:
+                            st.error(f"Erreur : {e}")
+                
+                with col_del:
+                    if st.button("🗑️ Supprimer cette recette", key=f"del_{recipe['id']}", use_container_width=True):
+                        try:
+                            supabase.table("recipes").delete().eq("id", recipe['id']).execute()
+                            st.success("Recette supprimée !")
+                            refresh_data()
+                        except Exception as e:
+                            st.error(f"Erreur : {e}")
 
-                # Ingrédients de la recette
-                st.markdown("#### 🛒 Ingrédients")
+                # Modification des informations de base
+                st.markdown("### ✏️ Informations de base")
+                with st.form(f"edit_recipe_form_{recipe['id']}"):
+                    new_name = st.text_input("Nom de la recette", value=recipe['name'], key=f"edit_rname_{recipe['id']}")
+                    new_servings = st.number_input(
+                        "Nombre de personnes de base", 
+                        min_value=1,
+                        value=recipe.get('base_servings', 4),
+                        key=f"edit_rservings_{recipe['id']}"
+                    )
+                    new_instructions = st.text_area(
+                        "Instructions", 
+                        value=recipe.get('instructions', ''),
+                        height=200,
+                        key=f"edit_rinstructions_{recipe['id']}"
+                    )
+                    if st.form_submit_button("💾 Sauvegarder les modifications", use_container_width=True):
+                        try:
+                            supabase.table("recipes").update({
+                                "name": new_name.strip().capitalize(),
+                                "base_servings": new_servings,
+                                "instructions": new_instructions
+                            }).eq("id", recipe['id']).execute()
+                            st.success("Recette mise à jour !")
+                            refresh_data()
+                        except Exception as e:
+                            st.error(f"Erreur : {e}")
+
+                # Gestion des ingrédients
+                st.markdown("### 🛒 Ingrédients de la recette")
+                
                 rec_ings = [ri for ri in recipe_ings if ri['recipe_id'] == recipe['id']]
                 
                 if rec_ings:
+                    st.markdown("**Ingrédients actuels :**")
                     for ri in rec_ings:
                         ing = next((i for i in ingredients if i['id'] == ri['ingredient_id']), None)
                         if ing:
-                            qty = ri['quantity'] * ratio
-                            qty_str = format_quantity(qty)
-                            
                             col1, col2, col3 = st.columns([4, 2, 1])
                             col1.write(f"**{ing['name']}**")
-                            col2.write(f"{qty_str} {ing['unit']}")
+                            col2.write(f"{format_quantity(ri['quantity'])} {ing['unit']}")
                             if col3.button("❌", key=f"del_ri_{ri['id']}", help="Retirer cet ingrédient"):
                                 try:
                                     supabase.table("recipe_ingredients").delete().eq("id", ri['id']).execute()
@@ -504,10 +601,10 @@ def main():
                                 except Exception as e:
                                     st.error(f"Erreur : {e}")
                 else:
-                    st.info("Aucun ingrédient ajouté.")
+                    st.info("Aucun ingrédient ajouté à cette recette.")
 
                 # Ajout d'un ingrédient
-                st.markdown("#### ➕ Ajouter un ingrédient")
+                st.markdown("**Ajouter un ingrédient :**")
                 existing_ings = [ri['ingredient_id'] for ri in rec_ings]
                 available_ings = [i for i in ingredients if i['id'] not in existing_ings]
                 
@@ -531,7 +628,7 @@ def main():
                     with col3:
                         st.write("")
                         st.write("")
-                        if st.button("➕", key=f"btn_add_ing_{recipe['id']}", use_container_width=True):
+                        if st.button("➕ Ajouter", key=f"btn_add_ing_{recipe['id']}", use_container_width=True):
                             try:
                                 ing_obj = ing_options[selected_ing_name]
                                 supabase.table("recipe_ingredients").insert({
@@ -539,48 +636,15 @@ def main():
                                     "ingredient_id": ing_obj['id'],
                                     "quantity": qty
                                 }).execute()
+                                st.success("Ingrédient ajouté !")
                                 refresh_data()
                             except Exception as e:
                                 st.error(f"Erreur : {e}")
                 else:
-                    st.info("Tous les ingrédients sont déjà dans la recette.")
-
-                # Instructions
-                st.markdown("#### 📝 Instructions")
-                if recipe.get('instructions'):
-                    st.write(recipe['instructions'])
-                else:
-                    st.info("Aucune instruction.")
-
-                # Modification
-                with st.expander("✏️ Modifier la recette"):
-                    with st.form(f"edit_recipe_form_{recipe['id']}"):
-                        new_name = st.text_input("Nom", value=recipe['name'], key=f"edit_rname_{recipe['id']}")
-                        new_servings = st.number_input(
-                            "Personnes de base", 
-                            min_value=1,
-                            value=recipe.get('base_servings', 4),
-                            key=f"edit_rservings_{recipe['id']}"
-                        )
-                        new_instructions = st.text_area(
-                            "Instructions", 
-                            value=recipe.get('instructions', ''),
-                            height=150,
-                            key=f"edit_rinstructions_{recipe['id']}"
-                        )
-                        if st.form_submit_button("💾 Sauvegarder", use_container_width=True):
-                            try:
-                                supabase.table("recipes").update({
-                                    "name": new_name.strip().capitalize(),
-                                    "base_servings": new_servings,
-                                    "instructions": new_instructions
-                                }).eq("id", recipe['id']).execute()
-                                refresh_data()
-                            except Exception as e:
-                                st.error(f"Erreur : {e}")
+                    st.info("Tous les ingrédients disponibles sont déjà dans cette recette.")
 
     # ============================
-    # ONGLET MENUS & COURSES
+    # ONGLET 4 : MENUS & COURSES
     # ============================
     with tab_menus:
         st.header("Menus & Liste de courses")
@@ -595,24 +659,25 @@ def main():
 
         # --- PLANIFICATION ---
         with col_plan:
-            st.subheader("📅 Planification")
+            st.subheader("📅 Planification des repas")
 
             if not recipes:
                 st.warning("Créez d'abord des recettes !")
             else:
                 with st.form("add_meal_form"):
                     col_day, col_meal = st.columns(2)
-                    day = col_day.selectbox("Jour", JOURS)
-                    meal_type = col_meal.selectbox("Repas", REPAS)
+                    day = col_day.selectbox("Jour", JOURS, key="meal_day")
+                    meal_type = col_meal.selectbox("Repas", REPAS, key="meal_type")
                     
                     recipe_names = [r['name'] for r in recipes]
-                    recipe_name = st.selectbox("Recette", recipe_names)
+                    recipe_name = st.selectbox("Recette", recipe_names, key="meal_recipe")
                     recipe = next((r for r in recipes if r['name'] == recipe_name), None)
                     
                     servings = st.number_input(
-                        "Convives", 
+                        "Nombre de convives", 
                         min_value=1, 
-                        value=recipe.get('base_servings', 4) if recipe else 4
+                        value=recipe.get('base_servings', 4) if recipe else 4,
+                        key="meal_servings"
                     )
                     
                     if st.form_submit_button("➕ Ajouter au planning", use_container_width=True):
@@ -624,14 +689,17 @@ def main():
                                     "recipe_id": recipe['id'],
                                     "servings": servings
                                 }).execute()
+                                st.success("Repas ajouté !")
                                 refresh_data()
                             except Exception as e:
                                 st.error(f"Erreur : {e}")
 
             # Affichage du planning
             st.markdown("---")
+            st.subheader("Planning de la semaine")
+            
             if not planned_meals:
-                st.info("Aucun repas planifié.")
+                st.info("Aucun repas planifié pour le moment.")
             else:
                 by_day = defaultdict(list)
                 for pm in planned_meals:
@@ -644,16 +712,17 @@ def main():
                             rec_name = recipes_dict.get(pm['recipe_id'], {}).get('name', 'Inconnu')
                             col1, col2 = st.columns([5, 1])
                             col1.write(f"• {pm['meal_type']} : {rec_name} ({pm['servings']} pers.)")
-                            if col2.button("❌", key=f"del_pm_{pm['id']}"):
+                            if col2.button("❌", key=f"del_pm_{pm['id']}", help="Supprimer ce repas"):
                                 try:
                                     supabase.table("planned_meals").delete().eq("id", pm['id']).execute()
                                     refresh_data()
                                 except Exception as e:
                                     st.error(f"Erreur : {e}")
 
-                if st.button("🗑️ Vider le planning", key="clear_planning", use_container_width=True):
+                if st.button("🗑️ Vider tout le planning", key="clear_planning", use_container_width=True):
                     try:
                         supabase.table("planned_meals").delete().neq("id", 0).execute()
+                        st.success("Planning vidé !")
                         refresh_data()
                     except Exception as e:
                         st.error(f"Erreur : {e}")
@@ -662,7 +731,7 @@ def main():
         with col_list:
             st.subheader("🛒 Liste de courses")
 
-            # Agrégation
+            # Agrégation des ingrédients
             aggregated = {}
             for pm in planned_meals:
                 rec = recipes_dict.get(pm['recipe_id'])
@@ -685,8 +754,9 @@ def main():
                         aggregated[ing['id']]['qty'] += qty
 
             if not aggregated:
-                st.info("Ajoutez des repas pour générer la liste.")
+                st.info("Ajoutez des repas au planning pour générer la liste de courses.")
             else:
+                st.markdown("**Par rayon :**")
                 by_cat = defaultdict(list)
                 for item in aggregated.values():
                     by_cat[item['category']].append(item)
@@ -712,11 +782,11 @@ def main():
                         key=f"rec_{item['id']}"
                     )
             else:
-                st.caption("Aucun produit récurrent.")
+                st.caption("Aucun produit récurrent configuré.")
 
             # Export PDF
             st.markdown("---")
-            if st.button("📄 Générer le PDF", key="generate_pdf_btn", use_container_width=True):
+            if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
                 pdf_bytes = generate_pdf(planned_meals, aggregated, recurrent, recipes_dict)
                 if pdf_bytes:
                     st.download_button(
