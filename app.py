@@ -71,7 +71,7 @@ def load_planned_meals():
     except Exception:
         return []
 
-# --- GÉNÉRATEUR PDF (FPDF2) ---
+# --- GÉNÉRATEUR PDF AMÉLIORÉ (FPDF2) ---
 class MenuPDF(FPDF):
     def __init__(self, start_date_str, end_date_str):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -79,72 +79,118 @@ class MenuPDF(FPDF):
         self.end_date_str = end_date_str
 
     def header(self):
-        self.set_font("Helvetica", "B", 15)
-        self.cell(0, 10, clean_pdf_text(f"Menu du {self.start_date_str} au {self.end_date_str}"), border=0, new_x="LMARGIN", new_y="NEXT", align="C")
-        self.ln(3)
+        # Bandeau de titre supérieur
+        self.set_fill_color(46, 125, 50)  # Vert Forêt
+        self.rounded_rect(10, 8, 190, 14, 3, style="F")
+        
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 12)
+        self.set_xy(10, 8)
+        self.cell(190, 14, clean_pdf_text(f"MENU ET COURSES DU {self.start_date_str} AU {self.end_date_str}"), align="C")
+        self.ln(18)
 
 def generate_pdf(planning, shopping, recurring, days_list, start_str, end_str):
     pdf = MenuPDF(start_str, end_str)
     pdf.add_page()
     pdf.set_auto_page_break(auto=False)
 
-    top_y = 25
-    total_h = 255
+    top_y = 26
+    total_h = 258
 
-    # PARTIE GAUCHE (2/3 de la largeur : 120 mm)
+    # Palette de couleurs
+    PRIMARY_R, PRIMARY_G, PRIMARY_B = 46, 125, 50      # Vert Forêt
+    TEXT_DARK_R, TEXT_DARK_G, TEXT_DARK_B = 30, 41, 59 # Slate Foncé
+    BORDER_R, BORDER_G, BORDER_B = 203, 213, 225        # Gris bordures
+    BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B = 248, 250, 252 # Fond cartes
+
+    # --- PARTIE GAUCHE (Planning 120 mm) ---
     left_x = 10
     left_w = 120
-    day_h = total_h / 7
+    day_h = (total_h - 5) / 7
 
     for i, day in enumerate(days_list):
         y_pos = top_y + (i * day_h)
-        
-        pdf.rect(left_x, y_pos, left_w, day_h - 2)
-        
-        pdf.set_xy(left_x + 3, y_pos + 2)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(left_w - 6, 5, clean_pdf_text(day))
 
-        pdf.set_font("Helvetica", "", 9)
+        # Fond de la carte du jour
+        pdf.set_fill_color(BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B)
+        pdf.set_draw_color(BORDER_R, BORDER_G, BORDER_B)
+        pdf.rounded_rect(left_x, y_pos, left_w, day_h - 3, 2.5, style="DF")
+
+        # Bandeau du nom du jour
+        pdf.set_fill_color(232, 245, 233)  # Vert pastel
+        pdf.rounded_rect(left_x, y_pos, left_w, 7, 2, style="FD")
+
+        pdf.set_xy(left_x + 4, y_pos + 1)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(PRIMARY_R, PRIMARY_G, PRIMARY_B)
+        pdf.cell(left_w - 8, 5, clean_pdf_text(day.upper()))
+
+        # Contenu Repas
+        pdf.set_text_color(TEXT_DARK_R, TEXT_DARK_G, TEXT_DARK_B)
+        
         midi_txt = clean_pdf_text(planning.get((day, "Midi"), "-"))
         soir_txt = clean_pdf_text(planning.get((day, "Soir"), "-"))
 
-        pdf.set_xy(left_x + 5, y_pos + 8)
-        pdf.multi_cell(left_w - 10, 4.5, f"Midi : {midi_txt}")
-        
-        pdf.set_xy(left_x + 5, y_pos + 16)
-        pdf.multi_cell(left_w - 10, 4.5, f"Soir : {soir_txt}")
+        # Ligne Midi
+        pdf.set_xy(left_x + 4, y_pos + 8.5)
+        pdf.set_font("Helvetica", "B", 8.5)
+        pdf.cell(12, 4.5, "Midi :")
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.multi_cell(left_w - 20, 4.5, midi_txt)
 
-    # PARTIE DROITE (1/3 de la largeur : 65 mm)
+        # Ligne Soir
+        pdf.set_xy(left_x + 4, y_pos + 18)
+        pdf.set_font("Helvetica", "B", 8.5)
+        pdf.cell(12, 4.5, "Soir :")
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.multi_cell(left_w - 20, 4.5, soir_txt)
+
+    # --- PARTIE DROITE (Courses & Récurrents 65 mm) ---
     right_x = 135
     right_w = 65
 
     # 1. Liste de courses
-    list_h = 135
-    pdf.rect(right_x, top_y, right_w, list_h)
-    
-    pdf.set_xy(right_x + 2, top_y + 2)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(right_w - 4, 6, "Liste de courses", align="C")
-    
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_xy(right_x + 3, top_y + 10)
+    list_h = 140
+    pdf.set_fill_color(BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B)
+    pdf.set_draw_color(BORDER_R, BORDER_G, BORDER_B)
+    pdf.rounded_rect(right_x, top_y, right_w, list_h, 2.5, style="DF")
+
+    # En-tête Liste de courses
+    pdf.set_fill_color(PRIMARY_R, PRIMARY_G, PRIMARY_B)
+    pdf.rounded_rect(right_x, top_y, right_w, 8, 2, style="F")
+    pdf.set_xy(right_x, top_y + 1)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(right_w, 6, "LISTE DE COURSES", align="C")
+
+    # Contenu Ingrédients
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(TEXT_DARK_R, TEXT_DARK_G, TEXT_DARK_B)
+    pdf.set_xy(right_x + 4, top_y + 11)
     courses_txt = "\n".join([f"- {clean_pdf_text(item)}" for item in shopping]) if shopping else "Aucun article"
-    pdf.multi_cell(right_w - 6, 5, courses_txt)
+    pdf.multi_cell(right_w - 8, 4.5, courses_txt)
 
     # 2. Produits récurrents
     rec_y = top_y + list_h + 4
     rec_h = total_h - list_h - 4
-    pdf.rect(right_x, rec_y, right_w, rec_h)
+    pdf.set_fill_color(BG_LIGHT_R, BG_LIGHT_G, BG_LIGHT_B)
+    pdf.set_draw_color(BORDER_R, BORDER_G, BORDER_B)
+    pdf.rounded_rect(right_x, rec_y, right_w, rec_h, 2.5, style="DF")
 
-    pdf.set_xy(right_x + 2, rec_y + 2)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(right_w - 4, 6, "Produits récurrents", align="C")
+    # En-tête Récurrents
+    pdf.set_fill_color(100, 116, 139)  # Gris ardoise
+    pdf.rounded_rect(right_x, rec_y, right_w, 7, 2, style="F")
+    pdf.set_xy(right_x, rec_y + 1)
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(right_w, 5, "PRODUITS RÉCURRENTS", align="C")
 
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_xy(right_x + 3, rec_y + 10)
+    # Contenu Produits Récurrents
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(TEXT_DARK_R, TEXT_DARK_G, TEXT_DARK_B)
+    pdf.set_xy(right_x + 4, rec_y + 9)
     recurring_txt = "\n".join([f"- {clean_pdf_text(item)}" for item in recurring]) if recurring else "Aucun produit"
-    pdf.multi_cell(right_w - 6, 5, recurring_txt)
+    pdf.multi_cell(right_w - 8, 4.5, recurring_txt)
 
     return bytes(pdf.output())
 
@@ -319,13 +365,13 @@ with tab_planning:
         pdf_bytes = generate_pdf(pdf_planning_dict, shopping_list, recurring_items, DAYS, start_str, end_str)
         b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
 
-        # Bouton JavaScript qui convertit le Base64 en Blob URL et l'ouvre dans un nouvel onglet
+        # Bouton JavaScript pour ouvrir dans un nouvel onglet
         js_code = f"""
             <button id="open-pdf-btn" style="
                 display: inline-block;
                 padding: 12px 24px;
                 color: white;
-                background-color: #007bff;
+                background-color: #2E7D32;
                 border: none;
                 border-radius: 6px;
                 font-weight: bold;
@@ -352,7 +398,7 @@ with tab_planning:
         
         components.html(js_code, height=60)
 
-        # Alternative direct de téléchargement
+        # Bouton de téléchargement direct
         st.download_button(
             label="📥 Télécharger directement le PDF",
             data=pdf_bytes,
