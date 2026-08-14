@@ -209,7 +209,7 @@ def convert_to_kg(quantity: float, unit: str, ingredient_data: Dict = None) -> f
         if poids_piece_g is not None and poids_piece_g > 0:
             return (quantity * poids_piece_g) / 1000
         else:
-            return quantity / 10  # approximation 100g par pièce
+            return quantity / 10
     
     return quantity
 
@@ -511,7 +511,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
-        # Produits récurrents
+        # Produits récurrents (2 colonnes)
         if recurrent_items:
             y_right += 3
             
@@ -522,16 +522,30 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             y_right += 9
             
             pdf.set_font('Helvetica', '', courses_font_size)
-            for rec in recurrent_items:
+            
+            # Largeur de chaque colonne
+            col_width = (right_width - 8) / 2
+            
+            # Afficher en 2 colonnes
+            for i, rec in enumerate(recurrent_items):
+                col_index = i % 2
+                x_pos = right_x + 3 + (col_index * (col_width + 5))
+                
                 if y_right > page_height - margin - 2:
                     break
                 
                 checkbox_size = 2.5
                 pdf.set_draw_color(100, 100, 100)
-                pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
+                pdf.rect(x_pos, y_right + 1, checkbox_size, checkbox_size, 'D')
                 
-                pdf.set_xy(right_x + 7, y_right)
-                pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(rec['name']), ln=True)
+                pdf.set_xy(x_pos + 5, y_right)
+                pdf.cell(col_width - 8, courses_line_height, clean_pdf_str(rec['name'])[:25], ln=False)
+                
+                if col_index == 1:
+                    y_right += courses_line_height
+            
+            # Si nombre impair, passer à la ligne suivante
+            if len(recurrent_items) % 2 != 0:
                 y_right += courses_line_height
 
         return bytes(pdf.output())
