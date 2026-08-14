@@ -851,8 +851,7 @@ def main():
                         mime="application/pdf",
                         key="download_pdf_after_view",
                         use_container_width=True
-                    )
-            
+                    )            
             with col_clear:
                 if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
                     try:
