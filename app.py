@@ -226,6 +226,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         day_font_size = 13
         meal_font_size = 11
         courses_font_size = 10
+        courses_line_height = 4.5  # Défini ici
         
         # Positions
         left_x = margin
