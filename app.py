@@ -303,7 +303,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         day_block_width = 18
         
-        # Hauteur minimale pour "Dimanche"
+                # Hauteur minimale pour "Dimanche"
         pdf.set_font('Helvetica', 'B', day_font_size)
         dimanche_width = pdf.get_string_width('Dimanche')
         min_block_height = dimanche_width + 12
