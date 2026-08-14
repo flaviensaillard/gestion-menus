@@ -596,7 +596,8 @@ def main():
             if 'selected_start_date' not in st.session_state:
                 st.session_state.selected_start_date = date.today()
             
-            col_calendar, col_info = st.columns([1, 3])
+            # Date + bouton vider en haut
+            col_calendar, col_info, col_clear_top = st.columns([1, 2, 1])
             with col_calendar:
                 start_date = st.date_input(
                     "Date de début",
@@ -607,6 +608,19 @@ def main():
             with col_info:
                 end_date = start_date + timedelta(days=6)
                 st.info(f"📅 Semaine du {start_date.strftime('%d/%m/%Y')} au {end_date.strftime('%d/%m/%Y')}")
+            with col_clear_top:
+                st.write("")
+                if st.button("🗑️ Vider toute la semaine", key="clear_week_top", use_container_width=True):
+                    try:
+                        days_to_clear = [JOURS_FR.get((start_date + timedelta(days=i)).strftime('%A'), (start_date + timedelta(days=i)).strftime('%A')) for i in range(7)]
+                        for day_name in days_to_clear:
+                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
+                            for meal in meals_to_delete:
+                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                        st.success("✅ Semaine vidée !")
+                        refresh_data()
+                    except Exception as e:
+                        st.error(f"Erreur : {e}")
             
             st.markdown("---")
             
@@ -850,9 +864,9 @@ def main():
                     
                     st.markdown("---")
             
-            # Actions en bas
+            # Actions en bas (export PDF seulement)
             st.markdown("---")
-            col_export, col_clear = st.columns(2)
+            col_export, _ = st.columns([1, 1])
             
             with col_export:
                 if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
@@ -906,19 +920,6 @@ def main():
                         st.session_state.pdf_bytes = pdf_bytes
                         st.session_state.show_pdf = True
                         st.rerun()
-            
-            with col_clear:
-                if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
-                    try:
-                        days_to_clear = [d['day_name'] for d in week_days]
-                        for day_name in days_to_clear:
-                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
-                            for meal in meals_to_delete:
-                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
-                        st.success("✅ Semaine vidée !")
-                        refresh_data()
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
             
             # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
@@ -1116,6 +1117,12 @@ def main():
                                 label_visibility="collapsed"
                             )
                             st.session_state.new_recipe_ings[idx]['ingredient'] = selected_ing if selected_ing != "-" else None
+                            
+                            # Afficher la quantité recommandée
+                            if selected_ing and selected_ing != "-":
+                                ing_obj = next((i for i in ingredients if i['name'] == selected_ing), None)
+                                if ing_obj and ing_obj.get('quantite_recommandee'):
+                                    st.caption(f"💡 Recommandé : {format_quantity(ing_obj['quantite_recommandee'])} {ing_obj['unit']}/pers.")
                         
                         with col2:
                             qty = st.number_input(
@@ -1375,6 +1382,12 @@ def main():
                                             label_visibility="collapsed"
                                         )
                                         st.session_state[f'new_ings_{recipe["id"]}'][idx]['ingredient'] = selected_ing if selected_ing != "-" else None
+                                        
+                                        # Afficher la quantité recommandée
+                                        if selected_ing and selected_ing != "-":
+                                            ing_obj = next((i for i in available_ings if i['name'] == selected_ing), None)
+                                            if ing_obj and ing_obj.get('quantite_recommandee'):
+                                                st.caption(f"💡 Recommandé : {format_quantity(ing_obj['quantite_recommandee'])} {ing_obj['unit']}/pers.")
                                     
                                     with col2:
                                         qty = st.number_input(
@@ -1470,19 +1483,26 @@ def main():
                 exclude = col3.checkbox("🚪 Fond de placard", key="new_ing_exclude")
                 recurrent = col4.checkbox("🔁 Récurrent", key="new_ing_recurrent")
                 
-                # Champ pour le poids par pièce
                 st.markdown("---")
-                st.markdown("**Poids par pièce (optionnel)**")
-                st.caption("Permet de convertir les pièces en kg dans la liste de courses")
-                
-                poids_piece = st.number_input(
-                    "Poids d'une pièce (en grammes)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=10.0,
-                    key="new_ing_poids_piece",
-                    help="Ex: 1 tomate = 150g, 1 œuf = 55g"
-                )
+                col5, col6 = st.columns(2)
+                with col5:
+                    poids_piece = st.number_input(
+                        "Poids d'une pièce (g)",
+                        min_value=0.0,
+                        value=0.0,
+                        step=10.0,
+                        key="new_ing_poids_piece",
+                        help="Ex: 1 tomate = 150g"
+                    )
+                with col6:
+                    quantite_recommandee = st.number_input(
+                        "Qté recommandée/pers.",
+                        min_value=0.0,
+                        value=0.0,
+                        step=10.0,
+                        key="new_ing_quantite_reco",
+                        help="Ex: 150g de viande/pers."
+                    )
                 
                 col_submit, col_cancel = st.columns(2)
                 with col_submit:
@@ -1503,7 +1523,8 @@ def main():
                                 "category": category,
                                 "exclude_from_list": exclude,
                                 "is_recurrent": recurrent,
-                                "poids_piece_g": poids_piece if poids_piece > 0 else None
+                                "poids_piece_g": poids_piece if poids_piece > 0 else None,
+                                "quantite_recommandee": quantite_recommandee if quantite_recommandee > 0 else None
                             }
                             
                             supabase.table("ingredients").insert(data_to_insert).execute()
@@ -1519,10 +1540,21 @@ def main():
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
         
         if ingredients:
-            # Vérifier si la colonne poids_piece_g existe
             has_poids = 'poids_piece_g' in ingredients[0] if ingredients else False
+            has_reco = 'quantite_recommandee' in ingredients[0] if ingredients else False
             
-            if has_poids:
+            if has_poids and has_reco:
+                df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent', 'poids_piece_g', 'quantite_recommandee']]
+                column_config = {
+                    "name": "Nom",
+                    "unit": "Unité",
+                    "category": "Rayon",
+                    "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
+                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent"),
+                    "poids_piece_g": st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f"),
+                    "quantite_recommandee": st.column_config.NumberColumn("Qté reco/pers.", format="%.0f")
+                }
+            elif has_poids:
                 df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent', 'poids_piece_g']]
                 column_config = {
                     "name": "Nom",
@@ -1589,14 +1621,23 @@ def main():
                                 key=f"edit_recurrent_{selected_ing['id']}"
                             )
                             
-                            # Champ pour le poids par pièce
-                            new_poids = st.number_input(
-                                "Poids d'une pièce (en grammes)",
-                                min_value=0.0,
-                                value=float(selected_ing.get('poids_piece_g') or 0) if selected_ing.get('poids_piece_g') else 0.0,
-                                step=10.0,
-                                key=f"edit_poids_{selected_ing['id']}"
-                            )
+                            col5, col6 = st.columns(2)
+                            with col5:
+                                new_poids = st.number_input(
+                                    "Poids d'une pièce (g)",
+                                    min_value=0.0,
+                                    value=float(selected_ing.get('poids_piece_g') or 0) if selected_ing.get('poids_piece_g') else 0.0,
+                                    step=10.0,
+                                    key=f"edit_poids_{selected_ing['id']}"
+                                )
+                            with col6:
+                                new_quantite_reco = st.number_input(
+                                    "Qté recommandée/pers.",
+                                    min_value=0.0,
+                                    value=float(selected_ing.get('quantite_recommandee') or 0) if selected_ing.get('quantite_recommandee') else 0.0,
+                                    step=10.0,
+                                    key=f"edit_quantite_reco_{selected_ing['id']}"
+                                )
                             
                             col_save, col_del = st.columns(2)
                             with col_save:
@@ -1614,6 +1655,8 @@ def main():
                                     }
                                     if 'poids_piece_g' in selected_ing:
                                         update_data["poids_piece_g"] = new_poids if new_poids > 0 else None
+                                    if 'quantite_recommandee' in selected_ing:
+                                        update_data["quantite_recommandee"] = new_quantite_reco if new_quantite_reco > 0 else None
                                     
                                     supabase.table("ingredients").update(update_data).eq("id", selected_ing['id']).execute()
                                     refresh_data()
