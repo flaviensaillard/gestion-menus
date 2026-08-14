@@ -6,6 +6,7 @@ from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
 import re
+import base64
 
 # ------------------------------
 # CONFIGURATION DE LA PAGE
@@ -87,7 +88,7 @@ def refresh_data():
 # FONCTIONS UTILITAIRES
 # ------------------------------
 def clean_pdf_str(text: Any) -> str:
-    """Nettoie les chaînes pour FPDF (supprime les emojis et caractères spéciaux)."""
+    """Nettoie les chaînes pour FPDF."""
     if not text:
         return ""
     
@@ -112,7 +113,7 @@ def format_quantity(qty: float) -> str:
     return f"{qty:.2f}".rstrip('0').rstrip('.')
 
 def instructions_to_text(instructions_list: List[str]) -> str:
-    """Convertit une liste d'instructions en texte avec numérotation."""
+    """Convertit une liste d'instructions en texte numéroté."""
     if not instructions_list:
         return ""
     return "\n".join([f"{i+1}. {instr}" for i, instr in enumerate(instructions_list) if instr.strip()])
@@ -142,9 +143,11 @@ def sort_list_by_name(items: List[Dict]) -> List[Dict]:
     return sorted(items, key=lambda x: x.get('name', '').lower())
 
 def get_display_name(recipe: Dict) -> str:
-    """Retourne le nom d'affichage d'une recette (sans le préfixe [Ing])."""
+    """Retourne le nom d'affichage d'une recette (sans les préfixes)."""
     name = recipe.get('name', '')
     if name.startswith('[Ing] '):
+        return name[6:]
+    if name.startswith('[Txt] '):
         return name[6:]
     return name
 
@@ -168,7 +171,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         right_width = 68
         gap = 5
         
-        # Couleurs personnalisées
+        # Couleurs
         green_bg = (200, 230, 200)
         orange_bg = (255, 220, 180)
         gray_bg = (240, 240, 240)
@@ -183,24 +186,24 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         meal_font_size = 11
         courses_font_size = 10
         
-        # Hauteurs de ligne fixes
+        # Hauteurs de ligne
         title_line_height = 14
         period_line_height = 9
         meal_line_height = 5.5
         meal_spacing = 1.5
         courses_line_height = 4.5
         
-        # ==================== POSITIONS ====================
+        # Positions
         left_x = margin
         right_x = margin + left_width + gap
         
-        # ==================== LIGNE POINTILLÉE DE DÉCOUPE ====================
+        # Ligne pointillée de découpe
         pdf.set_draw_color(150, 150, 150)
         pdf.set_dash_pattern(dash=1, gap=2)
         pdf.line(right_x - gap/2, margin, right_x - gap/2, page_height - margin)
         pdf.set_dash_pattern()
         
-        # ==================== GÉNÉRER LES JOURS ====================
+        # Générer les jours
         if start_date:
             week_days = []
             for i in range(7):
@@ -229,10 +232,11 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     if meal_type in schedule[day_name]:
                         schedule[day_name][meal_type].append({
                             'name': rec_name,
-                            'servings': pm.get('servings', 1)
+                            'servings': pm.get('servings', 1),
+                            'has_recipe': pm.get('recipe_id') is not None
                         })
         
-        # ==================== EN-TÊTE ====================
+        # En-tête
         pdf.set_font('Helvetica', 'B', title_font_size)
         pdf.set_xy(left_x, margin)
         pdf.cell(left_width, title_line_height, clean_pdf_str('Menus de la semaine'), align='C')
@@ -245,32 +249,25 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         y_start = margin + title_line_height + period_line_height + 2
         
-        # ==================== COLONNE GAUCHE : PLANNING ====================
-        # Titre du planning - le fond vert commence exactement à left_x et finit à left_x + left_width
+        # Titre planning
         planning_title_height = 8
         pdf.set_fill_color(*green_bg)
         pdf.set_xy(left_x, y_start)
         pdf.set_font('Helvetica', 'B', 14)
         pdf.cell(left_width, planning_title_height, 'Planning des Repas', ln=True, fill=True, align='C')
         
-        # Le bord droit du planning est exactement à left_x + left_width
         planning_right_edge = left_x + left_width
-        
-        # Position de départ du contenu
         content_y_start = y_start + planning_title_height + 2
-        
-        # Hauteur disponible pour les 7 jours
         available_height = page_height - margin - content_y_start - 2
         
-        # Largeur du bloc jour (vertical)
         day_block_width = 18
         
-        # Calculer la hauteur minimale pour afficher "Dimanche" en vertical
+        # Hauteur minimale pour "Dimanche"
         pdf.set_font('Helvetica', 'B', day_font_size)
         dimanche_width = pdf.get_string_width('Dimanche')
         min_block_height = dimanche_width + 12
         
-        # Calculer la hauteur de chaque jour en fonction du contenu
+        # Calculer les hauteurs
         day_heights = []
         for day_info in week_days:
             day_name = day_info['day_name']
@@ -284,17 +281,14 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             day_height = max(content_height, min_block_height)
             day_heights.append(day_height)
         
-        # Calculer la hauteur totale avec les espacements
         total_height = sum(day_heights) + (len(week_days) - 1) * 2
         
-        # Si trop grand, réduire proportionnellement
         if total_height > available_height:
             scale = available_height / total_height
             day_heights = [max(h * scale, min_block_height * 0.8) for h in day_heights]
             meal_line_height = meal_line_height * scale
             meal_spacing = meal_spacing * scale
         
-        # Position Y de départ
         y = content_y_start
         
         # Affichage des jours
@@ -309,21 +303,14 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             block_height = day_heights[i]
             
-            # Vérifier si on a assez de place
             if y + block_height > page_height - margin:
                 break
             
-            # ===== STRUCTURE DU BLOC JOUR =====
-            # Le contenu commence après le bloc jour
             content_x = left_x + day_block_width + 2
-            
-            # Le contenu se termine exactement au même endroit que le planning (bord droit)
             content_width = planning_right_edge - content_x
             
-            # Hauteur totale du bloc
             total_inner_height = block_height - 1
             
-            # Répartir la hauteur entre déjeuner et dîner
             interline = 1.5
             remaining_height = total_inner_height - interline
             
@@ -331,16 +318,13 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             midi_height = (remaining_height * midi_lines / total_lines) if total_lines > 0 else remaining_height / 2
             soir_height = remaining_height - midi_height
             
-            # ===== BLOC JOUR (vertical) =====
+            # Bloc jour
             pdf.set_fill_color(*day_bg)
             pdf.rect(left_x, y, day_block_width, total_inner_height, 'F')
-            
             pdf.set_draw_color(200, 200, 200)
             pdf.rect(left_x, y, day_block_width, total_inner_height, 'D')
             
-            # Nom du jour en vertical
             pdf.set_font('Helvetica', 'B', day_font_size)
-            
             text_margin = 4
             with pdf.rotation(90, left_x + day_block_width/2, y + total_inner_height/2):
                 text_width = total_inner_height - (text_margin * 2)
@@ -348,19 +332,24 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(left_x + day_block_width/2 - text_width/2, y + total_inner_height/2 - text_height/2)
                 pdf.cell(text_width, text_height, clean_pdf_str(day_name), align='C')
             
-            # ===== DÉJEUNER =====
-            # Le fond du déjeuner commence à content_x et se termine à planning_right_edge
+            # Déjeuner
             pdf.set_fill_color(*midi_bg)
             pdf.rect(content_x, y, content_width, midi_height, 'F')
-            
             pdf.set_draw_color(220, 220, 220)
             pdf.rect(content_x, y, content_width, midi_height, 'D')
             
-            midi_servings = max([item['servings'] for item in midi_items], default=1) if midi_items else 1
+            # Vérifier s'il y a des plats avec recette
+            has_midi_content = any(item['has_recipe'] for item in midi_items)
+            
+            if has_midi_content:
+                midi_servings = max([item['servings'] for item in midi_items if item['has_recipe']], default=1)
+                midi_label = f'Déjeuner ({midi_servings}P) :'
+            else:
+                midi_label = 'Déjeuner :'
             
             pdf.set_xy(content_x + 3, y + 1)
             pdf.set_font('Helvetica', 'B', meal_font_size)
-            pdf.cell(40, meal_line_height, f'Déjeuner ({midi_servings}P) :', border=0)
+            pdf.cell(40, meal_line_height, clean_pdf_str(midi_label), border=0)
             
             if midi_items:
                 pdf.set_font('Helvetica', '', meal_font_size)
@@ -379,21 +368,25 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(content_x + 43, y + 1)
                 pdf.cell(content_width - 48, meal_line_height, '-', border=0, ln=True)
             
-            # ===== DÎNER =====
+            # Dîner
             y_diner = y + midi_height + interline
             
-            # Le fond du dîner commence à content_x et se termine à planning_right_edge
             pdf.set_fill_color(*soir_bg)
             pdf.rect(content_x, y_diner, content_width, soir_height, 'F')
-            
             pdf.set_draw_color(220, 220, 220)
             pdf.rect(content_x, y_diner, content_width, soir_height, 'D')
             
-            soir_servings = max([item['servings'] for item in soir_items], default=1) if soir_items else 1
+            has_soir_content = any(item['has_recipe'] for item in soir_items)
+            
+            if has_soir_content:
+                soir_servings = max([item['servings'] for item in soir_items if item['has_recipe']], default=1)
+                soir_label = f'Dîner ({soir_servings}P) :'
+            else:
+                soir_label = 'Dîner :'
             
             pdf.set_xy(content_x + 3, y_diner + 1)
             pdf.set_font('Helvetica', 'B', meal_font_size)
-            pdf.cell(40, meal_line_height, f'Dîner ({soir_servings}P) :', border=0)
+            pdf.cell(40, meal_line_height, clean_pdf_str(soir_label), border=0)
             
             if soir_items:
                 pdf.set_font('Helvetica', '', meal_font_size)
@@ -412,10 +405,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(content_x + 43, y_diner + 1)
                 pdf.cell(content_width - 48, meal_line_height, '-', border=0, ln=True)
             
-            # Passage au jour suivant
             y += block_height + 2
         
-        # ==================== COLONNE DROITE : LISTE DE COURSES ====================
+        # Colonne droite : Liste de courses
         y_right = margin
         
         pdf.set_fill_color(*orange_bg)
@@ -446,7 +438,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     pdf.set_font('Helvetica', '', courses_font_size)
                     for it in by_cat[cat]:
                         qty_str = format_quantity(it['qty'])
-                        
                         checkbox_size = 2.5
                         pdf.set_draw_color(100, 100, 100)
                         pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
@@ -458,7 +449,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
-        # ==================== PRODUITS RÉCURRENTS ====================
+        # Produits récurrents
         if recurrent_items:
             y_right += 3
             
@@ -486,6 +477,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
     except Exception as e:
         st.error(f"Erreur lors de la génération du PDF : {e}")
         return b""
+
 # ------------------------------
 # INTERFACE PRINCIPALE
 # ------------------------------
@@ -497,11 +489,9 @@ def main():
     st.title("🍽️ Mon Gestionnaire de Menus")
     st.markdown("---")
 
-    # Chargement initial des données
     if 'data' not in st.session_state:
         st.session_state.data = load_data()
 
-    # Navigation par onglets
     tab_menus, tab_consulter, tab_editer, tab_ingredients = st.tabs([
         "📅 Menus", 
         "🔍 Consulter", 
@@ -515,19 +505,16 @@ def main():
     with tab_menus:
         st.header("Planification des menus")
         
-        # Données
         planned_meals = st.session_state.data.get('planned_meals', [])
         all_recipes = st.session_state.data.get('recipes', [])
         recipes_dict = {r['id']: r for r in all_recipes}
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
         
-        # Recettes normales
-        recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ')])
+        recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ') and not r['name'].startswith('[Txt] ')])
         
         if not recipes and not ingredients:
             st.warning("Créez d'abord des recettes ou des ingrédients !")
         else:
-            # Sélection de la date de début avec mémorisation
             if 'selected_start_date' not in st.session_state:
                 st.session_state.selected_start_date = date.today()
             
@@ -538,7 +525,6 @@ def main():
                     value=st.session_state.selected_start_date,
                     key="week_start_date_input"
                 )
-                # Mémoriser la date sélectionnée
                 st.session_state.selected_start_date = start_date
             with col_info:
                 end_date = start_date + timedelta(days=6)
@@ -546,7 +532,6 @@ def main():
             
             st.markdown("---")
             
-            # Génération des 7 jours
             week_days = []
             for i in range(7):
                 current_date = start_date + timedelta(days=i)
@@ -559,41 +544,43 @@ def main():
                     'is_today': current_date == date.today()
                 })
             
-            # Affichage de la semaine
             for day_info in week_days:
                 with st.container():
-                    # En-tête du jour (aujourd'hui en gras)
                     if day_info['is_today']:
                         st.markdown(f"### 📍 **{day_info['day_name']} {day_info['day_number']}** (Aujourd'hui)")
                     else:
                         st.markdown(f"### 📅 {day_info['day_name']} {day_info['day_number']}")
                     
-                    # Récupération des repas pour ce jour
                     day_meals = [pm for pm in planned_meals if pm['day'] == day_info['day_name']]
                     
-                    # Regrouper les repas par type
                     meals_by_type = defaultdict(list)
                     for meal in day_meals:
                         meals_by_type[meal['meal_type']].append(meal)
                     
-                    # Affichage des repas regroupés
                     if day_meals:
                         for meal_type in REPAS:
                             if meal_type in meals_by_type:
                                 meals = meals_by_type[meal_type]
                                 label = REPAS_LABELS.get(meal_type, meal_type)
                                 
-                                servings_list = [meal.get('servings', 1) for meal in meals]
-                                servings = max(servings_list) if servings_list else 1
+                                has_content = any(meal.get('recipe_id') is not None for meal in meals)
                                 
-                                st.markdown(f"**{label} ({servings}p) :**")
+                                if has_content:
+                                    servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
+                                    servings = max(servings_list) if servings_list else 1
+                                    st.markdown(f"**{label} ({servings}p) :**")
+                                else:
+                                    st.markdown(f"**{label} :**")
                                 
                                 for meal in meals:
-                                    rec = recipes_dict.get(meal.get('recipe_id'))
-                                    if rec:
-                                        item_name = get_display_name(rec)
+                                    if meal.get('recipe_id'):
+                                        rec = recipes_dict.get(meal.get('recipe_id'))
+                                        if rec:
+                                            item_name = get_display_name(rec)
+                                        else:
+                                            item_name = 'Inconnu'
                                     else:
-                                        item_name = 'Inconnu'
+                                        item_name = '-'
                                     
                                     col_item, col_del = st.columns([10, 1])
                                     with col_item:
@@ -608,7 +595,6 @@ def main():
                     else:
                         st.caption("Aucun repas planifié")
                     
-                    # Ajout d'un repas avec expander persistant
                     expander_key = f"expander_{day_info['day_name']}_{day_info['day_number']}"
                     
                     if expander_key not in st.session_state:
@@ -619,7 +605,7 @@ def main():
                         with col_type:
                             item_type = st.radio(
                                 "Type",
-                                ["Recette", "Ingrédient"],
+                                ["Recette", "Ingrédient", "Texte libre"],
                                 horizontal=True,
                                 key=f"item_type_{day_info['day_name']}_{day_info['day_number']}"
                             )
@@ -647,7 +633,7 @@ def main():
                                     st.warning("Aucune recette disponible")
                                     selected_recipe = None
                                     default_servings = 4
-                            else:
+                            elif item_type == "Ingrédient":
                                 if ingredients:
                                     ingredient_names = ["-"] + [i['name'] for i in ingredients]
                                     selected_item = st.selectbox(
@@ -661,6 +647,15 @@ def main():
                                     st.warning("Aucun ingrédient disponible")
                                     selected_recipe = None
                                     default_servings = 1
+                            else:
+                                free_text = st.text_input(
+                                    "Texte libre",
+                                    placeholder="ex: Restaurant, Pizza, etc.",
+                                    key=f"free_text_{day_info['day_name']}_{day_info['day_number']}"
+                                )
+                                selected_item = None
+                                selected_recipe = None
+                                default_servings = 1
                         
                         with col_servings:
                             if item_type == "Recette":
@@ -670,20 +665,28 @@ def main():
                                     value=default_servings,
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
                                 )
-                            else:
+                            elif item_type == "Ingrédient":
                                 servings = st.number_input(
                                     "Quantité",
                                     min_value=1,
                                     value=default_servings,
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
                                 )
+                            else:
+                                servings = 1
                         
                         col_add_btn, col_close_btn = st.columns(2)
                         
                         with col_add_btn:
                             if st.button("➕ Ajouter", key=f"add_meal_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
-                                if meal_type == "-" or selected_item == "-":
-                                    st.warning("Sélectionnez un repas et une recette/ingrédient")
+                                if meal_type == "-":
+                                    st.warning("Sélectionnez un repas (Déjeuner ou Dîner)")
+                                elif item_type == "Recette" and selected_item == "-":
+                                    st.warning("Sélectionnez une recette")
+                                elif item_type == "Ingrédient" and selected_item == "-":
+                                    st.warning("Sélectionnez un ingrédient")
+                                elif item_type == "Texte libre" and not free_text.strip():
+                                    st.warning("Saisissez un texte")
                                 else:
                                     try:
                                         if item_type == "Recette" and selected_recipe:
@@ -728,6 +731,20 @@ def main():
                                                     "recipe_id": ing_recipe_id,
                                                     "servings": servings
                                                 }).execute()
+                                        elif item_type == "Texte libre":
+                                            txt_recipe = supabase.table("recipes").insert({
+                                                "name": f"[Txt] {free_text.strip()}",
+                                                "base_servings": 1,
+                                                "instructions": ""
+                                            }).execute()
+                                            
+                                            if txt_recipe.data:
+                                                supabase.table("planned_meals").insert({
+                                                    "day": day_info['day_name'],
+                                                    "meal_type": meal_type,
+                                                    "recipe_id": txt_recipe.data[0]['id'],
+                                                    "servings": 1
+                                                }).execute()
                                         
                                         st.success(f"✅ Ajouté pour {day_info['day_name']} !")
                                         st.session_state[expander_key] = True
@@ -742,7 +759,6 @@ def main():
                     
                     st.markdown("---")
             
-            # Actions en bas
             st.markdown("---")
             col_export, col_clear = st.columns(2)
             
@@ -770,7 +786,7 @@ def main():
                                     }
                                 else:
                                     aggregated[ing['id']]['qty'] += pm['servings']
-                        else:
+                        elif not rec['name'].startswith('[Txt] '):
                             ratio = pm['servings'] / rec.get('base_servings', 1)
                             for ri in recipe_ings:
                                 if ri['recipe_id'] == pm['recipe_id']:
@@ -797,13 +813,11 @@ def main():
                         start_date=start_date
                     )
                     if pdf_bytes:
-                        st.download_button(
-                            "📥 Télécharger le PDF",
-                            data=pdf_bytes,
-                            file_name=f"menus_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf",
-                            mime="application/pdf",
-                            key="download_pdf_btn",
-                            use_container_width=True
+                        b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                        pdf_url = f"data:application/pdf;base64,{b64_pdf}"
+                        st.markdown(
+                            f'<a href="{pdf_url}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">📥 Ouvrir le PDF dans un nouvel onglet</a>',
+                            unsafe_allow_html=True
                         )
             
             with col_clear:
@@ -829,7 +843,7 @@ def main():
         recipe_ings = st.session_state.data.get('recipe_ingredients', [])
         ingredients = st.session_state.data.get('ingredients', [])
         
-        recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ')])
+        recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ') and not r['name'].startswith('[Txt] ')])
         
         if not recipes:
             st.info("Aucune recette disponible. Créez-en une dans l'onglet 'Créer / Éditer'.")
@@ -902,7 +916,7 @@ def main():
         st.header("Créer / Éditer une recette")
 
         all_recipes = st.session_state.data.get('recipes', [])
-        recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ')])
+        recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ') and not r['name'].startswith('[Txt] ')])
         recipe_ings = st.session_state.data.get('recipe_ingredients', [])
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
 
@@ -915,7 +929,6 @@ def main():
 
         st.markdown("---")
 
-        # ==================== MODE CRÉATION ====================
         if mode == "➕ Créer une nouvelle recette":
             col_left, col_right = st.columns([1, 1])
             
@@ -1082,7 +1095,6 @@ def main():
                     except Exception as e:
                         st.error(f"Erreur : {e}")
 
-        # ==================== MODE ÉDITION ====================
         else:
             if not recipes:
                 st.info("Aucune recette à éditer. Créez-en une d'abord !")
