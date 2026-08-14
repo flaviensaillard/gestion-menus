@@ -762,7 +762,7 @@ def main():
             st.markdown("---")
             col_export, col_clear = st.columns(2)
             
-            with col_export:
+                       with col_export:
                 if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
                     ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
                     recipe_ings = st.session_state.data.get('recipe_ingredients', [])
@@ -813,12 +813,45 @@ def main():
                         start_date=start_date
                     )
                     if pdf_bytes:
-                        b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                        pdf_url = f"data:application/pdf;base64,{b64_pdf}"
-                        st.markdown(
-                            f'<a href="{pdf_url}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">📥 Ouvrir le PDF dans un nouvel onglet</a>',
-                            unsafe_allow_html=True
-                        )
+                        # Stocker le PDF dans la session pour l'afficher
+                        st.session_state.pdf_bytes = pdf_bytes
+                        st.session_state.show_pdf = True
+                        st.rerun()
+            
+            # Afficher le PDF si demandé (après le col_clear ou juste après col_export/col_clear)
+            if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
+                st.markdown("---")
+                st.subheader("📄 Aperçu du PDF")
+                
+                # Convertir en base64 pour l'affichage
+                b64_pdf = base64.b64encode(st.session_state.pdf_bytes).decode('utf-8')
+                
+                # Afficher dans un iframe
+                pdf_display = f'''
+                    <iframe src="data:application/pdf;base64,{b64_pdf}" 
+                            width="100%" 
+                            height="600px" 
+                            type="application/pdf"
+                            style="border: 1px solid #ccc; border-radius: 5px;">
+                    </iframe>
+                '''
+                st.markdown(pdf_display, unsafe_allow_html=True)
+                
+                # Boutons d'action sous le PDF
+                col_close_pdf, col_download_pdf = st.columns(2)
+                with col_close_pdf:
+                    if st.button("❌ Fermer l'aperçu", key="close_pdf_view", use_container_width=True):
+                        st.session_state.show_pdf = False
+                        st.rerun()
+                with col_download_pdf:
+                    st.download_button(
+                        "📥 Télécharger le PDF",
+                        data=st.session_state.pdf_bytes,
+                        file_name=f"menus_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf",
+                        key="download_pdf_after_view",
+                        use_container_width=True
+                    )
             
             with col_clear:
                 if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
