@@ -22,10 +22,12 @@ st.set_page_config(
 # ------------------------------
 # CONSTANTES
 # ------------------------------
-UNITES = ["g", "kg", "ml", "cl", "l", "unité", "c. à soupe", "c. à café",
-          "pincée", "sachet", "gousse", "tranche", "boîte"]
+UNITES = ["g", "kg", "ml", "cl", "l", "unité", "pièce", "tranche", "gousse", 
+          "sachet", "boîte", "barquette", "c. à soupe", "c. à café", "pincée"]
+
 RAYONS = ["Fruits & Légumes", "Boucherie & Poissonnerie", "Frais & Produits Laitiers",
           "Épicerie Salée", "Épicerie Sucrée", "Boissons", "Surgelés", "Autre"]
+
 JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 REPAS = ["Midi", "Soir"]
 
@@ -191,6 +193,37 @@ def open_pdf_button(pdf_bytes: bytes):
     """
     
     components.html(html_component, height=60)
+
+def convert_to_kg(quantity: float, unit: str, poids_piece_g: float = None) -> float:
+    """Convertit une quantité en kg."""
+    unit = unit.lower().strip() if unit else ""
+    
+    # Unités de masse
+    if unit in ['g', 'gramme', 'grammes']:
+        return quantity / 1000
+    elif unit in ['kg', 'kilo', 'kilos']:
+        return quantity
+    
+    # Unités de liquide (approximation densité = 1)
+    elif unit in ['ml', 'millilitre']:
+        return quantity / 1000
+    elif unit in ['cl', 'centilitre']:
+        return quantity / 100
+    elif unit in ['l', 'litre']:
+        return quantity
+    elif unit in ['c. à soupe', 'cuillère à soupe']:
+        return quantity * 0.015
+    elif unit in ['c. à café', 'cuillère à café']:
+        return quantity * 0.005
+    
+    # Pièces, barquettes, etc.
+    elif unit in ['unité', 'pièce', 'tranche', 'gousse', 'sachet', 'boîte', 'barquette']:
+        if poids_piece_g is not None and poids_piece_g > 0:
+            return (quantity * poids_piece_g) / 1000
+        else:
+            return quantity
+    
+    return quantity
 
 # ------------------------------
 # GÉNÉRATION PDF
@@ -482,12 +515,12 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     pdf.set_font('Helvetica', '', courses_font_size)
                     for it in by_cat[cat]:
-                        qty_str = format_quantity(it['qty'])
+                        qty_str = format_quantity(it['qty_kg'])
                         checkbox_size = 2.5
                         pdf.set_draw_color(100, 100, 100)
                         pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
                         
-                        line = f"{it['name']} : {qty_str} {it['unit']}"
+                        line = f"{it['name']} : {qty_str} kg"
                         pdf.set_xy(right_x + 7, y_right)
                         pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(line), ln=True)
                         y_right += courses_line_height
@@ -622,7 +655,6 @@ def main():
                                         rec = recipes_dict.get(meal.get('recipe_id'))
                                         if rec:
                                             item_name = get_display_name(rec)
-                                            # Vérifier si c'est un ingrédient simple pour afficher la quantité
                                             if rec['name'].startswith('[Ing] '):
                                                 ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
                                                 if ing_obj:
@@ -716,7 +748,6 @@ def main():
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
                                 )
                             elif item_type == "Ingrédient":
-                                # Trouver l'unité de l'ingrédient sélectionné
                                 selected_ing_obj = next((i for i in ingredients if i['name'] == selected_item), None) if selected_item != "-" else None
                                 ing_unit = selected_ing_obj['unit'] if selected_ing_obj else ""
                                 
@@ -838,15 +869,14 @@ def main():
                             ing_name = get_display_name(rec)
                             ing = next((i for i in ingredients_dict.values() if i['name'] == ing_name), None)
                             if ing and not ing.get('exclude_from_list'):
+                                qty_kg = convert_to_kg(pm['servings'], ing['unit'], ing.get('poids_piece_g', None))
                                 if ing['id'] not in aggregated:
                                     aggregated[ing['id']] = {
                                         "name": ing['name'],
-                                        "qty": pm['servings'],
-                                        "unit": ing['unit'],
+                                        "qty_kg": 0,
                                         "category": ing.get('category', 'Autre')
                                     }
-                                else:
-                                    aggregated[ing['id']]['qty'] += pm['servings']
+                                aggregated[ing['id']]['qty_kg'] += qty_kg
                         elif not rec['name'].startswith('[Txt] '):
                             ratio = pm['servings'] / rec.get('base_servings', 1)
                             for ri in recipe_ings:
@@ -854,15 +884,14 @@ def main():
                                     ing = ingredients_dict.get(ri['ingredient_id'])
                                     if not ing or ing.get('exclude_from_list'):
                                         continue
-                                    qty = ri['quantity'] * ratio
+                                    qty_kg = convert_to_kg(ri['quantity'] * ratio, ing['unit'], ing.get('poids_piece_g', None))
                                     if ing['id'] not in aggregated:
                                         aggregated[ing['id']] = {
                                             "name": ing['name'],
-                                            "qty": 0,
-                                            "unit": ing['unit'],
+                                            "qty_kg": 0,
                                             "category": ing.get('category', 'Autre')
                                         }
-                                    aggregated[ing['id']]['qty'] += qty
+                                    aggregated[ing['id']]['qty_kg'] += qty_kg
                     
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
@@ -1473,7 +1502,7 @@ def main():
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
         
         if ingredients:
-            df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent']]
+            df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent', 'poids_piece_g']]
             st.dataframe(
                 df_display,
                 column_config={
@@ -1481,7 +1510,8 @@ def main():
                     "unit": "Unité",
                     "category": "Rayon",
                     "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
-                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent")
+                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent"),
+                    "poids_piece_g": st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f")
                 },
                 hide_index=True,
                 use_container_width=True
@@ -1527,6 +1557,14 @@ def main():
                                 key=f"edit_recurrent_{selected_ing['id']}"
                             )
                             
+                            new_poids = st.number_input(
+                                "Poids d'une pièce (en grammes)",
+                                min_value=0.0,
+                                value=float(selected_ing.get('poids_piece_g', 0) or 0),
+                                step=10.0,
+                                key=f"edit_poids_{selected_ing['id']}"
+                            )
+                            
                             col_save, col_del = st.columns(2)
                             with col_save:
                                 save_clicked = st.form_submit_button("💾 Sauvegarder", use_container_width=True)
@@ -1539,7 +1577,8 @@ def main():
                                         "unit": new_unit,
                                         "category": new_category,
                                         "exclude_from_list": new_exclude,
-                                        "is_recurrent": new_recurrent
+                                        "is_recurrent": new_recurrent,
+                                        "poids_piece_g": new_poids if new_poids > 0 else None
                                     }).eq("id", selected_ing['id']).execute()
                                     refresh_data()
                                 except Exception as e:
