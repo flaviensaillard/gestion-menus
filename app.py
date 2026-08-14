@@ -211,7 +211,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         left_width = 115
         right_width = 68
         gap = 5
-        day_block_width = 15  # Défini ici, avant utilisation
+        day_block_width = 15
         
         # Couleurs
         green_bg = (200, 230, 200)
@@ -301,13 +301,11 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         # Espace entre les jours
         day_gap = 1.5
         
-        # Hauteur pour les 7 jours (après les gaps)
+        # Hauteur pour les 7 jours
         days_available = total_available - (len(week_days) - 1) * day_gap
-        
-        # Hauteur par jour (égale pour tous)
         day_height = days_available / len(week_days)
         
-        # S'assurer que la hauteur est suffisante pour le texte vertical
+        # Hauteur minimale pour le texte vertical
         pdf.set_font('Helvetica', 'B', day_font_size)
         dimanche_width = pdf.get_string_width('Dimanche')
         min_height = dimanche_width + 6
@@ -366,13 +364,12 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 midi_height = remaining_height / 2
                 soir_height = remaining_height / 2
             
-            # ===== BLOC JOUR (vertical) =====
+            # Bloc jour
             pdf.set_fill_color(*day_bg)
             pdf.rect(left_x, y, day_block_width, total_inner_height, 'F')
             pdf.set_draw_color(200, 200, 200)
             pdf.rect(left_x, y, day_block_width, total_inner_height, 'D')
             
-            # Nom du jour en vertical
             pdf.set_font('Helvetica', 'B', day_font_size)
             text_margin = 2
             with pdf.rotation(90, left_x + day_block_width/2, y + total_inner_height/2):
@@ -381,7 +378,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(left_x + day_block_width/2 - text_width/2, y + total_inner_height/2 - text_height/2)
                 pdf.cell(text_width, text_height, clean_pdf_str(day_name), align='C')
             
-            # ===== DÉJEUNER =====
+            # Déjeuner
             pdf.set_fill_color(*midi_bg)
             pdf.rect(content_x, y, content_width, midi_height, 'F')
             pdf.set_draw_color(220, 220, 220)
@@ -416,7 +413,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(content_x + 41, y + 0.5)
                 pdf.cell(content_width - 46, meal_line_height, '-', border=0, ln=True)
             
-            # ===== DÎNER =====
+            # Dîner
             y_diner = y + midi_height + interline
             
             pdf.set_fill_color(*soir_bg)
@@ -453,10 +450,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(content_x + 41, y_diner + 0.5)
                 pdf.cell(content_width - 46, meal_line_height, '-', border=0, ln=True)
             
-            # Passage au jour suivant
             y += day_height + day_gap
         
-        # ==================== COLONNE DROITE : LISTE DE COURSES ====================
+        # Colonne droite : Liste de courses
         y_right = margin
         
         pdf.set_fill_color(*orange_bg)
@@ -626,6 +622,11 @@ def main():
                                         rec = recipes_dict.get(meal.get('recipe_id'))
                                         if rec:
                                             item_name = get_display_name(rec)
+                                            # Vérifier si c'est un ingrédient simple pour afficher la quantité
+                                            if rec['name'].startswith('[Ing] '):
+                                                ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
+                                                if ing_obj:
+                                                    item_name = f"{item_name} ({meal.get('servings', 1)} {ing_obj['unit']})"
                                         else:
                                             item_name = 'Inconnu'
                                     else:
@@ -715,11 +716,21 @@ def main():
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
                                 )
                             elif item_type == "Ingrédient":
+                                # Trouver l'unité de l'ingrédient sélectionné
+                                selected_ing_obj = next((i for i in ingredients if i['name'] == selected_item), None) if selected_item != "-" else None
+                                ing_unit = selected_ing_obj['unit'] if selected_ing_obj else ""
+                                
+                                if ing_unit:
+                                    label = f"Quantité ({ing_unit})"
+                                else:
+                                    label = "Quantité"
+                                
                                 servings = st.number_input(
-                                    "Quantité",
+                                    label,
                                     min_value=1,
                                     value=default_servings,
-                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
+                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
+                                    help=f"Quantité en {ing_unit}" if ing_unit else "Quantité"
                                 )
                             else:
                                 servings = 1
