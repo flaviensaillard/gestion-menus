@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 from collections import defaultdict
 import re
 import base64
+import streamlit.components.v1 as components
 
 # ------------------------------
 # CONFIGURATION DE LA PAGE
@@ -150,6 +151,37 @@ def get_display_name(recipe: Dict) -> str:
     if name.startswith('[Txt] '):
         return name[6:]
     return name
+
+def open_pdf_in_new_tab(pdf_bytes: bytes):
+    """Ouvre le PDF dans un nouvel onglet en utilisant un Blob."""
+    b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+    
+    html_component = f"""
+    <script>
+    (function() {{
+        const base64Data = "{b64_pdf}";
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        
+        for (let i = 0; i < binaryString.length; i++) {{
+            bytes[i] = binaryString.charCodeAt(i);
+        }}
+        
+        const blob = new Blob([bytes], {{ type: 'application/pdf' }});
+        const url = URL.createObjectURL(blob);
+        
+        // Ouvrir dans un nouvel onglet
+        window.open(url, '_blank');
+        
+        // Nettoyer après 60 secondes
+        setTimeout(() => {{
+            URL.revokeObjectURL(url);
+        }}, 60000);
+    }})();
+    </script>
+    """
+    
+    components.html(html_component, height=0)
 
 # ------------------------------
 # GÉNÉRATION PDF
@@ -830,12 +862,15 @@ def main():
                     except Exception as e:
                         st.error(f"Erreur : {e}")
             
-                       # Afficher le PDF si demandé
+            # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
                 st.markdown("---")
-                st.subheader("📄 Aperçu du PDF")
+                st.success("✅ PDF généré ! Il s'ouvre dans un nouvel onglet...")
                 
-                # Option 1 : Utiliser st.download_button directement (toujours fonctionnel)
+                # Ouvrir le PDF dans un nouvel onglet
+                open_pdf_in_new_tab(st.session_state.pdf_bytes)
+                
+                # Boutons d'action
                 col_download, col_close = st.columns(2)
                 with col_download:
                     st.download_button(
@@ -850,22 +885,6 @@ def main():
                     if st.button("❌ Fermer", key="close_pdf_view", use_container_width=True):
                         st.session_state.show_pdf = False
                         st.rerun()
-                
-                # Option 2 : Afficher avec un composant HTML plus compatible
-                b64_pdf = base64.b64encode(st.session_state.pdf_bytes).decode('utf-8')
-                
-                # Utiliser embed au lieu d'iframe (plus compatible)
-                pdf_display = f'''
-                    <embed src="data:application/pdf;base64,{b64_pdf}" 
-                           type="application/pdf" 
-                           width="100%" 
-                           height="600px"
-                           style="border: 1px solid #ccc; border-radius: 5px;">
-                '''
-                st.markdown(pdf_display, unsafe_allow_html=True)
-                
-                # Message d'aide si le PDF ne s'affiche pas
-                st.info("💡 Si le PDF ne s'affiche pas, utilisez le bouton de téléchargement ci-dessus.")
 
     # ============================
     # ONGLET 2 : CONSULTER UNE RECETTE
