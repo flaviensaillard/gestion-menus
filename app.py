@@ -152,36 +152,45 @@ def get_display_name(recipe: Dict) -> str:
         return name[6:]
     return name
 
-def open_pdf_in_new_tab(pdf_bytes: bytes):
-    """Ouvre le PDF dans un nouvel onglet en utilisant un Blob."""
+def open_pdf_button(pdf_bytes: bytes):
+    """Affiche un bouton qui ouvre le PDF dans un nouvel onglet."""
     b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
     
     html_component = f"""
+    <button id="open-pdf-btn" style="
+        width: 100%;
+        padding: 12px 20px;
+        color: white;
+        background-color: #4CAF50;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 16px;
+        cursor: pointer;
+        margin-bottom: 10px;">
+        📄 Ouvrir le PDF dans un nouvel onglet
+    </button>
     <script>
-    (function() {{
-        const base64Data = "{b64_pdf}";
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        
-        for (let i = 0; i < binaryString.length; i++) {{
-            bytes[i] = binaryString.charCodeAt(i);
+    document.getElementById("open-pdf-btn").addEventListener("click", function() {{
+        const b64Data = "{b64_pdf}";
+        const byteCharacters = atob(b64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {{
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
         }}
-        
-        const blob = new Blob([bytes], {{ type: 'application/pdf' }});
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {{ type: "application/pdf" }});
         const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
         
-        // Ouvrir dans un nouvel onglet
-        window.open(url, '_blank');
-        
-        // Nettoyer après 60 secondes
         setTimeout(() => {{
             URL.revokeObjectURL(url);
         }}, 60000);
-    }})();
+    }});
     </script>
     """
     
-    components.html(html_component, height=0)
+    components.html(html_component, height=60)
 
 # ------------------------------
 # GÉNÉRATION PDF
@@ -865,12 +874,12 @@ def main():
             # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
                 st.markdown("---")
-                st.success("✅ PDF généré ! Il s'ouvre dans un nouvel onglet...")
+                st.success("✅ PDF généré avec succès !")
                 
-                # Ouvrir le PDF dans un nouvel onglet
-                open_pdf_in_new_tab(st.session_state.pdf_bytes)
+                # Bouton pour ouvrir le PDF dans un nouvel onglet
+                open_pdf_button(st.session_state.pdf_bytes)
                 
-                # Boutons d'action
+                # Boutons d'action supplémentaires
                 col_download, col_close = st.columns(2)
                 with col_download:
                     st.download_button(
