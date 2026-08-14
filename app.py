@@ -211,6 +211,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         left_width = 115
         right_width = 68
         gap = 5
+        day_block_width = 15  # Défini ici, avant utilisation
         
         # Couleurs
         green_bg = (200, 230, 200)
@@ -313,24 +314,15 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         if day_height < min_height:
             day_height = min_height
-            # Recalculer l'espace total
             total_needed = day_height * len(week_days) + (len(week_days) - 1) * day_gap
             if total_needed > total_available:
-                # Réduire la hauteur minimale
                 day_height = (total_available - (len(week_days) - 1) * day_gap) / len(week_days)
         
         # Calculer la hauteur de ligne pour les plats
-        # Chaque jour a 2 sections (déjeuner + dîner)
-        # Hauteur intérieure = day_height - 1 (bordure)
         inner_height = day_height - 1
-        
-        # Espace pour les titres (déjeuner/dîner)
-        title_space = 4  # 2mm par titre
-        
-        # Espace restant pour les plats
+        title_space = 4
         food_space = max(inner_height - title_space, 2)
         
-        # Nombre maximum de lignes de plats par jour
         max_lines_per_day = 0
         for day_info in week_days:
             day_name = day_info['day_name']
@@ -338,7 +330,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             soir_count = max(len(schedule[day_name]['Soir']), 1)
             max_lines_per_day = max(max_lines_per_day, midi_count + soir_count)
         
-        # Hauteur de ligne pour les plats
         if max_lines_per_day > 0:
             meal_line_height = food_space / max_lines_per_day
             meal_line_height = max(2.5, min(meal_line_height, 5))
@@ -358,11 +349,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             content_x = left_x + day_block_width + 2
             content_width = planning_right_edge - content_x
-            day_block_width = 15
             
             total_inner_height = day_height - 0.5
             
-            # Répartition déjeuner/dîner
             interline = 1
             remaining_height = total_inner_height - interline
             
