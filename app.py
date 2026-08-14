@@ -338,7 +338,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             pdf.set_draw_color(220, 220, 220)
             pdf.rect(content_x, y, content_width, midi_height, 'D')
             
-            # Vérifier s'il y a des plats avec recette
             has_midi_content = any(item['has_recipe'] for item in midi_items)
             
             if has_midi_content:
@@ -759,10 +758,11 @@ def main():
                     
                     st.markdown("---")
             
+            # Actions en bas
             st.markdown("---")
             col_export, col_clear = st.columns(2)
             
-                       with col_export:
+            with col_export:
                 if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
                     ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
                     recipe_ings = st.session_state.data.get('recipe_ingredients', [])
@@ -813,20 +813,30 @@ def main():
                         start_date=start_date
                     )
                     if pdf_bytes:
-                        # Stocker le PDF dans la session pour l'afficher
                         st.session_state.pdf_bytes = pdf_bytes
                         st.session_state.show_pdf = True
                         st.rerun()
             
-            # Afficher le PDF si demandé (après le col_clear ou juste après col_export/col_clear)
+            with col_clear:
+                if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
+                    try:
+                        days_to_clear = [d['day_name'] for d in week_days]
+                        for day_name in days_to_clear:
+                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
+                            for meal in meals_to_delete:
+                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                        st.success("✅ Semaine vidée !")
+                        refresh_data()
+                    except Exception as e:
+                        st.error(f"Erreur : {e}")
+            
+            # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
                 st.markdown("---")
                 st.subheader("📄 Aperçu du PDF")
                 
-                # Convertir en base64 pour l'affichage
                 b64_pdf = base64.b64encode(st.session_state.pdf_bytes).decode('utf-8')
                 
-                # Afficher dans un iframe
                 pdf_display = f'''
                     <iframe src="data:application/pdf;base64,{b64_pdf}" 
                             width="100%" 
@@ -837,7 +847,6 @@ def main():
                 '''
                 st.markdown(pdf_display, unsafe_allow_html=True)
                 
-                # Boutons d'action sous le PDF
                 col_close_pdf, col_download_pdf = st.columns(2)
                 with col_close_pdf:
                     if st.button("❌ Fermer l'aperçu", key="close_pdf_view", use_container_width=True):
@@ -851,19 +860,7 @@ def main():
                         mime="application/pdf",
                         key="download_pdf_after_view",
                         use_container_width=True
-                    )            
-            with col_clear:
-                if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
-                    try:
-                        days_to_clear = [d['day_name'] for d in week_days]
-                        for day_name in days_to_clear:
-                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
-                            for meal in meals_to_delete:
-                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
-                        st.success("✅ Semaine vidée !")
-                        refresh_data()
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
+                    )
 
     # ============================
     # ONGLET 2 : CONSULTER UNE RECETTE
