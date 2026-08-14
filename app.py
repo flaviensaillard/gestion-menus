@@ -830,37 +830,42 @@ def main():
                     except Exception as e:
                         st.error(f"Erreur : {e}")
             
-            # Afficher le PDF si demandé
+                       # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
                 st.markdown("---")
                 st.subheader("📄 Aperçu du PDF")
                 
-                b64_pdf = base64.b64encode(st.session_state.pdf_bytes).decode('utf-8')
-                
-                pdf_display = f'''
-                    <iframe src="data:application/pdf;base64,{b64_pdf}" 
-                            width="100%" 
-                            height="600px" 
-                            type="application/pdf"
-                            style="border: 1px solid #ccc; border-radius: 5px;">
-                    </iframe>
-                '''
-                st.markdown(pdf_display, unsafe_allow_html=True)
-                
-                col_close_pdf, col_download_pdf = st.columns(2)
-                with col_close_pdf:
-                    if st.button("❌ Fermer l'aperçu", key="close_pdf_view", use_container_width=True):
-                        st.session_state.show_pdf = False
-                        st.rerun()
-                with col_download_pdf:
+                # Option 1 : Utiliser st.download_button directement (toujours fonctionnel)
+                col_download, col_close = st.columns(2)
+                with col_download:
                     st.download_button(
                         "📥 Télécharger le PDF",
                         data=st.session_state.pdf_bytes,
                         file_name=f"menus_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf",
                         mime="application/pdf",
-                        key="download_pdf_after_view",
+                        key="download_pdf_btn",
                         use_container_width=True
                     )
+                with col_close:
+                    if st.button("❌ Fermer", key="close_pdf_view", use_container_width=True):
+                        st.session_state.show_pdf = False
+                        st.rerun()
+                
+                # Option 2 : Afficher avec un composant HTML plus compatible
+                b64_pdf = base64.b64encode(st.session_state.pdf_bytes).decode('utf-8')
+                
+                # Utiliser embed au lieu d'iframe (plus compatible)
+                pdf_display = f'''
+                    <embed src="data:application/pdf;base64,{b64_pdf}" 
+                           type="application/pdf" 
+                           width="100%" 
+                           height="600px"
+                           style="border: 1px solid #ccc; border-radius: 5px;">
+                '''
+                st.markdown(pdf_display, unsafe_allow_html=True)
+                
+                # Message d'aide si le PDF ne s'affiche pas
+                st.info("💡 Si le PDF ne s'affiche pas, utilisez le bouton de téléchargement ci-dessus.")
 
     # ============================
     # ONGLET 2 : CONSULTER UNE RECETTE
