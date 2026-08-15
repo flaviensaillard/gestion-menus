@@ -25,14 +25,13 @@ st.set_page_config(
 UNITES = ["g", "kg", "ml", "cl", "l", "unité", "pièce", "tranche", "gousse", 
           "sachet", "boîte", "barquette", "c. à soupe", "c. à café", "pincée"]
 
-UNITES_LISTE_COURSES = ["kg", "L", "unité"]
-
 RAYONS = ["Fruits & Légumes", "Boucherie & Poissonnerie", "Frais & Produits Laitiers",
           "Épicerie Salée", "Épicerie Sucrée", "Boissons", "Surgelés", "Autre"]
 
 JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 REPAS = ["Midi", "Soir"]
 
+# Mapping des jours en français
 JOURS_FR = {
     'Monday': 'Lundi',
     'Tuesday': 'Mardi',
@@ -43,6 +42,7 @@ JOURS_FR = {
     'Sunday': 'Dimanche'
 }
 
+# Mapping des repas
 REPAS_LABELS = {
     'Midi': 'Déjeuner',
     'Soir': 'Dîner'
@@ -69,6 +69,7 @@ supabase = init_supabase()
 # CHARGEMENT DES DONNÉES
 # ------------------------------
 def load_data() -> Dict[str, List]:
+    """Charge les données depuis Supabase."""
     if not supabase:
         return {}
     
@@ -82,6 +83,7 @@ def load_data() -> Dict[str, List]:
     return data
 
 def refresh_data():
+    """Recharge les données et rafraîchit la page."""
     st.session_state.data = load_data()
     st.rerun()
 
@@ -89,6 +91,7 @@ def refresh_data():
 # FONCTIONS UTILITAIRES
 # ------------------------------
 def clean_pdf_str(text: Any) -> str:
+    """Nettoie les chaînes pour FPDF."""
     if not text:
         return ""
     
@@ -107,16 +110,19 @@ def clean_pdf_str(text: Any) -> str:
     return result.encode('latin-1', 'replace').decode('latin-1')
 
 def format_quantity(qty: float) -> str:
+    """Formate les quantités proprement."""
     if isinstance(qty, float) and qty.is_integer():
         return str(int(qty))
     return f"{qty:.2f}".rstrip('0').rstrip('.')
 
 def instructions_to_text(instructions_list: List[str]) -> str:
+    """Convertit une liste d'instructions en texte numéroté."""
     if not instructions_list:
         return ""
     return "\n".join([f"{i+1}. {instr}" for i, instr in enumerate(instructions_list) if instr.strip()])
 
 def text_to_instructions(text: str) -> List[str]:
+    """Convertit un texte numéroté en liste d'instructions."""
     if not text:
         return [""]
     
@@ -136,9 +142,11 @@ def text_to_instructions(text: str) -> List[str]:
     return instructions if instructions else [""]
 
 def sort_list_by_name(items: List[Dict]) -> List[Dict]:
+    """Trie une liste de dictionnaires par le champ 'name'."""
     return sorted(items, key=lambda x: x.get('name', '').lower())
 
 def get_display_name(recipe: Dict) -> str:
+    """Retourne le nom d'affichage d'une recette (sans les préfixes)."""
     name = recipe.get('name', '')
     if name.startswith('[Ing] '):
         return name[6:]
@@ -147,6 +155,7 @@ def get_display_name(recipe: Dict) -> str:
     return name
 
 def open_pdf_button(pdf_bytes: bytes):
+    """Affiche un bouton qui ouvre le PDF dans un nouvel onglet."""
     b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
     
     html_component = f"""
@@ -185,50 +194,36 @@ def open_pdf_button(pdf_bytes: bytes):
     
     components.html(html_component, height=60)
 
-def convert_to_kg(quantity: float, unit: str, ingredient_data: Dict = None) -> float:
-    """Convertit n'importe quelle quantité en kg."""
+def convert_to_kg(quantity: float, unit: str, poids_piece_g: float = None) -> float:
+    """Convertit une quantité en kg."""
     unit = unit.lower().strip() if unit else ""
-    densite = ingredient_data.get('densite', 1.0) if ingredient_data else 1.0
-    poids_piece_g = ingredient_data.get('poids_piece_g') if ingredient_data else None
     
+    # Unités de masse
     if unit in ['g', 'gramme', 'grammes']:
         return quantity / 1000
     elif unit in ['kg', 'kilo', 'kilos']:
         return quantity
+    
+    # Unités de liquide (approximation densité = 1)
     elif unit in ['ml', 'millilitre']:
-        return (quantity * densite) / 1000
+        return quantity / 1000
     elif unit in ['cl', 'centilitre']:
-        return (quantity * 10 * densite) / 1000
+        return quantity / 100
     elif unit in ['l', 'litre']:
-        return quantity * densite
+        return quantity
     elif unit in ['c. à soupe', 'cuillère à soupe']:
-        return (quantity * 15 * densite) / 1000
+        return quantity * 0.015
     elif unit in ['c. à café', 'cuillère à café']:
-        return (quantity * 5 * densite) / 1000
+        return quantity * 0.005
+    
+    # Pièces, barquettes, etc.
     elif unit in ['unité', 'pièce', 'tranche', 'gousse', 'sachet', 'boîte', 'barquette']:
         if poids_piece_g is not None and poids_piece_g > 0:
             return (quantity * poids_piece_g) / 1000
         else:
-            return quantity / 10
+            return quantity
     
     return quantity
-
-def convert_kg_to_display(quantity_kg: float, unite_liste: str, ingredient_data: Dict = None) -> tuple:
-    """Convertit des kg vers l'unité d'affichage de la liste de courses."""
-    densite = ingredient_data.get('densite', 1.0) if ingredient_data else 1.0
-    poids_piece_g = ingredient_data.get('poids_piece_g') if ingredient_data else None
-    
-    if unite_liste == 'kg':
-        return quantity_kg, 'kg'
-    elif unite_liste == 'L':
-        return quantity_kg / densite, 'L'
-    elif unite_liste == 'unité':
-        if poids_piece_g is not None and poids_piece_g > 0:
-            return quantity_kg * 1000 / poids_piece_g, 'unité'
-        else:
-            return quantity_kg * 10, 'unité'
-    else:
-        return quantity_kg, 'kg'
 
 # ------------------------------
 # GÉNÉRATION PDF
@@ -236,11 +231,13 @@ def convert_kg_to_display(quantity_kg: float, unite_liste: str, ingredient_data:
 def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                  recurrent_items: List[Dict], recipes_dict: Dict, 
                  start_date: date = None) -> bytes:
+    """Génère un PDF A4 avec le menu et la liste de courses."""
     try:
         pdf = FPDF(format='A4', unit='mm')
         pdf.set_auto_page_break(auto=False)
         pdf.add_page()
         
+        # Dimensions
         page_width = 210
         page_height = 297
         margin = 10
@@ -249,6 +246,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         gap = 5
         day_block_width = 15
         
+        # Couleurs
         green_bg = (200, 230, 200)
         orange_bg = (255, 220, 180)
         gray_bg = (240, 240, 240)
@@ -256,6 +254,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         soir_bg = (240, 245, 255)
         day_bg = (245, 245, 220)
         
+        # Tailles de police
         title_font_size = 28
         period_font_size = 20
         day_font_size = 13
@@ -263,14 +262,17 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         courses_font_size = 10
         courses_line_height = 4.5
         
+        # Positions
         left_x = margin
         right_x = margin + left_width + gap
         
+        # Ligne pointillée de découpe
         pdf.set_draw_color(150, 150, 150)
         pdf.set_dash_pattern(dash=1, gap=2)
         pdf.line(right_x - gap/2, margin, right_x - gap/2, page_height - margin)
         pdf.set_dash_pattern()
         
+        # Générer les jours
         if start_date:
             week_days = []
             for i in range(7):
@@ -281,6 +283,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         else:
             week_days = [{'day_name': d} for d in JOURS]
         
+        # Regrouper les repas
         schedule = {}
         for day_info in week_days:
             day_name = day_info['day_name']
@@ -302,6 +305,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                             'has_recipe': pm.get('recipe_id') is not None
                         })
         
+        # En-tête
         pdf.set_font('Helvetica', 'B', title_font_size)
         pdf.set_xy(left_x, margin)
         pdf.cell(left_width, 12, clean_pdf_str('Menus de la semaine'), align='C')
@@ -314,6 +318,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         y_start = margin + 22
         
+        # Titre planning
         planning_title_height = 7
         pdf.set_fill_color(*green_bg)
         pdf.set_xy(left_x, y_start)
@@ -323,12 +328,17 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         planning_right_edge = left_x + left_width
         content_y_start = y_start + planning_title_height + 2
         
+        # Hauteur totale disponible
         total_available = page_height - margin - content_y_start
+        
+        # Espace entre les jours
         day_gap = 1.5
         
+        # Hauteur pour les 7 jours
         days_available = total_available - (len(week_days) - 1) * day_gap
         day_height = days_available / len(week_days)
         
+        # Hauteur minimale pour le texte vertical
         pdf.set_font('Helvetica', 'B', day_font_size)
         dimanche_width = pdf.get_string_width('Dimanche')
         min_height = dimanche_width + 6
@@ -339,6 +349,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             if total_needed > total_available:
                 day_height = (total_available - (len(week_days) - 1) * day_gap) / len(week_days)
         
+        # Calculer la hauteur de ligne pour les plats
         inner_height = day_height - 1
         title_space = 4
         food_space = max(inner_height - title_space, 2)
@@ -357,10 +368,13 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             meal_line_height = 4
         
         meal_spacing = 0.5
+        
         y = content_y_start
         
+        # Affichage des 7 jours
         for i, day_info in enumerate(week_days):
             day_name = day_info['day_name']
+            
             midi_items = schedule[day_name]['Midi']
             soir_items = schedule[day_name]['Soir']
             
@@ -368,6 +382,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             content_width = planning_right_edge - content_x
             
             total_inner_height = day_height - 0.5
+            
             interline = 1
             remaining_height = total_inner_height - interline
             
@@ -382,6 +397,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 midi_height = remaining_height / 2
                 soir_height = remaining_height / 2
             
+            # Bloc jour
             pdf.set_fill_color(*day_bg)
             pdf.rect(left_x, y, day_block_width, total_inner_height, 'F')
             pdf.set_draw_color(200, 200, 200)
@@ -499,19 +515,19 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     pdf.set_font('Helvetica', '', courses_font_size)
                     for it in by_cat[cat]:
-                        qty_display = format_quantity(it['qty_display'])
+                        qty_str = format_quantity(it['qty_kg'])
                         checkbox_size = 2.5
                         pdf.set_draw_color(100, 100, 100)
                         pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
                         
-                        line = f"{it['name']} : {qty_display} {it['unite_display']}"
+                        line = f"{it['name']} : {qty_str} kg"
                         pdf.set_xy(right_x + 7, y_right)
                         pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(line), ln=True)
                         y_right += courses_line_height
                     
                     y_right += 1
         
-        # Produits récurrents (2 colonnes)
+        # Produits récurrents
         if recurrent_items:
             y_right += 3
             
@@ -522,30 +538,16 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             y_right += 9
             
             pdf.set_font('Helvetica', '', courses_font_size)
-            
-            # Largeur de chaque colonne
-            col_width = (right_width - 8) / 2
-            
-            # Afficher en 2 colonnes
-            for i, rec in enumerate(recurrent_items):
-                col_index = i % 2
-                x_pos = right_x + 3 + (col_index * (col_width + 5))
-                
+            for rec in recurrent_items:
                 if y_right > page_height - margin - 2:
                     break
                 
                 checkbox_size = 2.5
                 pdf.set_draw_color(100, 100, 100)
-                pdf.rect(x_pos, y_right + 1, checkbox_size, checkbox_size, 'D')
+                pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
                 
-                pdf.set_xy(x_pos + 5, y_right)
-                pdf.cell(col_width - 8, courses_line_height, clean_pdf_str(rec['name'])[:25], ln=False)
-                
-                if col_index == 1:
-                    y_right += courses_line_height
-            
-            # Si nombre impair, passer à la ligne suivante
-            if len(recurrent_items) % 2 != 0:
+                pdf.set_xy(right_x + 7, y_right)
+                pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(rec['name']), ln=True)
                 y_right += courses_line_height
 
         return bytes(pdf.output())
@@ -594,7 +596,7 @@ def main():
             if 'selected_start_date' not in st.session_state:
                 st.session_state.selected_start_date = date.today()
             
-            col_calendar, col_info, col_clear_top = st.columns([1, 2, 1])
+            col_calendar, col_info = st.columns([1, 3])
             with col_calendar:
                 start_date = st.date_input(
                     "Date de début",
@@ -605,19 +607,6 @@ def main():
             with col_info:
                 end_date = start_date + timedelta(days=6)
                 st.info(f"📅 Semaine du {start_date.strftime('%d/%m/%Y')} au {end_date.strftime('%d/%m/%Y')}")
-            with col_clear_top:
-                st.write("")
-                if st.button("🗑️ Vider toute la semaine", key="clear_week_top", use_container_width=True):
-                    try:
-                        days_to_clear = [JOURS_FR.get((start_date + timedelta(days=i)).strftime('%A'), (start_date + timedelta(days=i)).strftime('%A')) for i in range(7)]
-                        for day_name in days_to_clear:
-                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
-                            for meal in meals_to_delete:
-                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
-                        st.success("✅ Semaine vidée !")
-                        refresh_data()
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
             
             st.markdown("---")
             
@@ -821,7 +810,8 @@ def main():
                                                         supabase.table("recipe_ingredients").insert({
                                                             "recipe_id": ing_recipe_id,
                                                             "ingredient_id": ing_obj['id'],
-                                                            "quantity": 1
+                                                            "quantity": 1,
+                                                            "unit": ing_obj['unit']
                                                         }).execute()
                                                     else:
                                                         st.error("Erreur lors de la création")
@@ -861,9 +851,9 @@ def main():
                     
                     st.markdown("---")
             
-            # Actions en bas (export PDF)
+            # Actions en bas
             st.markdown("---")
-            col_export, _ = st.columns([1, 1])
+            col_export, col_clear = st.columns(2)
             
             with col_export:
                 if st.button("📄 Générer la fiche PDF", key="generate_pdf_btn", use_container_width=True):
@@ -880,14 +870,12 @@ def main():
                             ing_name = get_display_name(rec)
                             ing = next((i for i in ingredients_dict.values() if i['name'] == ing_name), None)
                             if ing and not ing.get('exclude_from_list'):
-                                qty_kg = convert_to_kg(pm['servings'], ing['unit'], ing)
+                                qty_kg = convert_to_kg(pm['servings'], ing['unit'], ing.get('poids_piece_g'))
                                 if ing['id'] not in aggregated:
                                     aggregated[ing['id']] = {
                                         "name": ing['name'],
                                         "qty_kg": 0,
-                                        "category": ing.get('category', 'Autre'),
-                                        "unite_liste": ing.get('unite_liste_courses', 'kg'),
-                                        "ingredient_data": ing
+                                        "category": ing.get('category', 'Autre')
                                     }
                                 aggregated[ing['id']]['qty_kg'] += qty_kg
                         elif not rec['name'].startswith('[Txt] '):
@@ -897,26 +885,18 @@ def main():
                                     ing = ingredients_dict.get(ri['ingredient_id'])
                                     if not ing or ing.get('exclude_from_list'):
                                         continue
-                                    qty_kg = convert_to_kg(ri['quantity'] * ratio, ing['unit'], ing)
+                                    
+                                    # Utiliser l'unité de la recette si elle existe
+                                    ri_unit = ri.get('unit') or ing['unit']
+                                    
+                                    qty_kg = convert_to_kg(ri['quantity'] * ratio, ri_unit, ing.get('poids_piece_g'))
                                     if ing['id'] not in aggregated:
                                         aggregated[ing['id']] = {
                                             "name": ing['name'],
                                             "qty_kg": 0,
-                                            "category": ing.get('category', 'Autre'),
-                                            "unite_liste": ing.get('unite_liste_courses', 'kg'),
-                                            "ingredient_data": ing
+                                            "category": ing.get('category', 'Autre')
                                         }
                                     aggregated[ing['id']]['qty_kg'] += qty_kg
-                    
-                    # Convertir en unité d'affichage
-                    for ing_id, item in aggregated.items():
-                        qty_display, unite_display = convert_kg_to_display(
-                            item['qty_kg'], 
-                            item['unite_liste'], 
-                            item['ingredient_data']
-                        )
-                        item['qty_display'] = qty_display
-                        item['unite_display'] = unite_display
                     
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
@@ -932,6 +912,20 @@ def main():
                         st.session_state.show_pdf = True
                         st.rerun()
             
+            with col_clear:
+                if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
+                    try:
+                        days_to_clear = [d['day_name'] for d in week_days]
+                        for day_name in days_to_clear:
+                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
+                            for meal in meals_to_delete:
+                                supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                        st.success("✅ Semaine vidée !")
+                        refresh_data()
+                    except Exception as e:
+                        st.error(f"Erreur : {e}")
+            
+            # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
                 st.markdown("---")
                 st.success("✅ PDF généré avec succès !")
@@ -1010,11 +1004,14 @@ def main():
                                 qty_adjusted = ri['quantity'] * ratio
                                 qty_display = format_quantity(qty_adjusted)
                                 
+                                # Utiliser l'unité de la recette si elle existe, sinon celle de l'ingrédient
+                                display_unit = ri.get('unit') or ing['unit']
+                                
                                 col1, col2, col3 = st.columns([3, 2, 2])
                                 with col1:
                                     st.markdown(f"**{ing['name']}**")
                                 with col2:
-                                    st.markdown(f"{qty_display} {ing['unit']}")
+                                    st.markdown(f"{qty_display} {display_unit}")
                                 with col3:
                                     st.markdown(f"*{ing.get('category', 'Autre')}*")
                     else:
@@ -1127,14 +1124,6 @@ def main():
                                 label_visibility="collapsed"
                             )
                             st.session_state.new_recipe_ings[idx]['ingredient'] = selected_ing if selected_ing != "-" else None
-                            
-                            # AFFICHAGE DE LA RECOMMANDATION
-                            if selected_ing and selected_ing != "-":
-                                ing_obj = next((i for i in ingredients if i['name'] == selected_ing), None)
-                                if ing_obj and ing_obj.get('quantite_recommandee'):
-                                    reco = format_quantity(ing_obj['quantite_recommandee'])
-                                    unite_reco = ing_obj.get('unite_recommandee') or ing_obj.get('unit', '')
-                                    st.markdown(f"<small>💡 Recommandé : {reco} {unite_reco}/pers.</small>", unsafe_allow_html=True)
                         
                         with col2:
                             qty = st.number_input(
@@ -1204,7 +1193,8 @@ def main():
                                         supabase.table("recipe_ingredients").insert({
                                             "recipe_id": new_recipe_id,
                                             "ingredient_id": ing_obj['id'],
-                                            "quantity": new_ing['quantity']
+                                            "quantity": new_ing['quantity'],
+                                            "unit": new_ing['unit']
                                         }).execute()
                                         added_count += 1
                             
@@ -1257,7 +1247,8 @@ def main():
                                         supabase.table("recipe_ingredients").insert({
                                             "recipe_id": new_id,
                                             "ingredient_id": ri['ingredient_id'],
-                                            "quantity": ri['quantity']
+                                            "quantity": ri['quantity'],
+                                            "unit": ri.get('unit')
                                         }).execute()
                                     st.success("✅ Recette dupliquée !")
                                     refresh_data()
@@ -1342,9 +1333,12 @@ def main():
                                 for ri in rec_ings:
                                     ing = next((i for i in ingredients if i['id'] == ri['ingredient_id']), None)
                                     if ing:
+                                        # Utiliser l'unité de la recette si elle existe
+                                        display_unit = ri.get('unit') or ing['unit']
+                                        
                                         col1, col2, col3 = st.columns([4, 2, 1])
                                         col1.markdown(f"**{ing['name']}**")
-                                        col2.markdown(f"{format_quantity(ri['quantity'])} {ing['unit']}")
+                                        col2.markdown(f"{format_quantity(ri['quantity'])} {display_unit}")
                                         if col3.button("❌", key=f"del_ri_{ri['id']}", help="Retirer"):
                                             try:
                                                 supabase.table("recipe_ingredients").delete().eq("id", ri['id']).execute()
@@ -1394,14 +1388,6 @@ def main():
                                             label_visibility="collapsed"
                                         )
                                         st.session_state[f'new_ings_{recipe["id"]}'][idx]['ingredient'] = selected_ing if selected_ing != "-" else None
-                                        
-                                        # AFFICHAGE RECOMMANDATION
-                                        if selected_ing and selected_ing != "-":
-                                            ing_obj = next((i for i in available_ings if i['name'] == selected_ing), None)
-                                            if ing_obj and ing_obj.get('quantite_recommandee'):
-                                                reco = format_quantity(ing_obj['quantite_recommandee'])
-                                                unite_reco = ing_obj.get('unite_recommandee') or ing_obj.get('unit', '')
-                                                st.markdown(f"<small>💡 Recommandé : {reco} {unite_reco}/pers.</small>", unsafe_allow_html=True)
                                     
                                     with col2:
                                         qty = st.number_input(
@@ -1460,7 +1446,8 @@ def main():
                                                         supabase.table("recipe_ingredients").insert({
                                                             "recipe_id": recipe['id'],
                                                             "ingredient_id": ing_obj['id'],
-                                                            "quantity": new_ing['quantity']
+                                                            "quantity": new_ing['quantity'],
+                                                            "unit": new_ing['unit']
                                                         }).execute()
                                                         added_count += 1
                                             
@@ -1491,55 +1478,23 @@ def main():
                 st.subheader("Nouvel ingrédient")
                 name = st.text_input("Nom *", key="new_ing_name")
                 col1, col2 = st.columns(2)
-                unit = col1.selectbox("Unité de base", ["-"] + UNITES, key="new_ing_unit")
+                unit = col1.selectbox("Unité", ["-"] + UNITES, key="new_ing_unit")
                 category = col2.selectbox("Rayon", ["-"] + RAYONS, key="new_ing_category")
                 col3, col4 = st.columns(2)
                 exclude = col3.checkbox("🚪 Fond de placard", key="new_ing_exclude")
                 recurrent = col4.checkbox("🔁 Récurrent", key="new_ing_recurrent")
                 
                 st.markdown("---")
-                st.markdown("**Quantité recommandée par personne**")
-                col5, col6 = st.columns(2)
-                with col5:
-                    quantite_recommandee = st.number_input(
-                        "Quantité",
-                        min_value=0.0,
-                        value=0.0,
-                        step=0.5,
-                        key="new_ing_quantite_reco"
-                    )
-                with col6:
-                    unite_recommandee = st.selectbox(
-                        "Unité",
-                        ["-"] + UNITES,
-                        key="new_ing_unite_reco"
-                    )
+                st.markdown("**Poids par pièce (optionnel)**")
+                st.caption("Permet de convertir les pièces en kg dans la liste de courses")
                 
-                st.markdown("---")
-                col7, col8 = st.columns(2)
-                with col7:
-                    poids_piece = st.number_input(
-                        "Poids d'une pièce (g)",
-                        min_value=0.0,
-                        value=0.0,
-                        step=10.0,
-                        key="new_ing_poids_piece",
-                        help="Ex: 1 tomate = 150g"
-                    )
-                with col8:
-                    unite_liste = st.selectbox(
-                        "Unité liste de courses",
-                        UNITES_LISTE_COURSES,
-                        key="new_ing_unite_liste"
-                    )
-                
-                densite = st.number_input(
-                    "Densité (g/ml)",
-                    min_value=0.1,
-                    value=1.0,
-                    step=0.01,
-                    key="new_ing_densite",
-                    help="1.0 = eau, 0.92 = huile, 0.60 = farine"
+                poids_piece = st.number_input(
+                    "Poids d'une pièce (en grammes)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=10.0,
+                    key="new_ing_poids_piece",
+                    help="Ex: 1 tomate = 150g, 1 œuf = 55g"
                 )
                 
                 col_submit, col_cancel = st.columns(2)
@@ -1561,11 +1516,7 @@ def main():
                                 "category": category,
                                 "exclude_from_list": exclude,
                                 "is_recurrent": recurrent,
-                                "poids_piece_g": poids_piece if poids_piece > 0 else None,
-                                "quantite_recommandee": quantite_recommandee if quantite_recommandee > 0 else None,
-                                "unite_recommandee": unite_recommandee if unite_recommandee != "-" and quantite_recommandee > 0 else None,
-                                "densite": densite,
-                                "unite_liste_courses": unite_liste
+                                "poids_piece_g": poids_piece if poids_piece > 0 else None
                             }
                             
                             supabase.table("ingredients").insert(data_to_insert).execute()
@@ -1582,37 +1533,26 @@ def main():
         
         if ingredients:
             has_poids = 'poids_piece_g' in ingredients[0] if ingredients else False
-            has_reco = 'quantite_recommandee' in ingredients[0] if ingredients else False
-            has_unite_reco = 'unite_recommandee' in ingredients[0] if ingredients else False
-            has_densite = 'densite' in ingredients[0] if ingredients else False
-            has_unite_liste = 'unite_liste_courses' in ingredients[0] if ingredients else False
-            
-            columns_to_display = ['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent']
-            column_config = {
-                "name": "Nom",
-                "unit": "Unité",
-                "category": "Rayon",
-                "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
-                "is_recurrent": st.column_config.CheckboxColumn("Récurrent")
-            }
             
             if has_poids:
-                columns_to_display.append('poids_piece_g')
-                column_config["poids_piece_g"] = st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f")
-            if has_reco:
-                columns_to_display.append('quantite_recommandee')
-                column_config["quantite_recommandee"] = st.column_config.NumberColumn("Qté reco/pers.", format="%.1f")
-            if has_unite_reco:
-                columns_to_display.append('unite_recommandee')
-                column_config["unite_recommandee"] = "Unité reco"
-            if has_densite:
-                columns_to_display.append('densite')
-                column_config["densite"] = st.column_config.NumberColumn("Densité", format="%.2f")
-            if has_unite_liste:
-                columns_to_display.append('unite_liste_courses')
-                column_config["unite_liste_courses"] = "Unité liste"
-            
-            df_display = pd.DataFrame(ingredients)[columns_to_display]
+                df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent', 'poids_piece_g']]
+                column_config = {
+                    "name": "Nom",
+                    "unit": "Unité",
+                    "category": "Rayon",
+                    "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
+                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent"),
+                    "poids_piece_g": st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f")
+                }
+            else:
+                df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent']]
+                column_config = {
+                    "name": "Nom",
+                    "unit": "Unité",
+                    "category": "Rayon",
+                    "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
+                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent")
+                }
             
             st.dataframe(
                 df_display,
@@ -1638,7 +1578,7 @@ def main():
                         with st.form(f"edit_ing_form_{selected_ing['id']}"):
                             col1, col2 = st.columns(2)
                             new_unit = col1.selectbox(
-                                "Unité de base", 
+                                "Unité", 
                                 UNITES,
                                 index=UNITES.index(selected_ing['unit']) if selected_ing['unit'] in UNITES else 0,
                                 key=f"edit_unit_{selected_ing['id']}"
@@ -1661,53 +1601,12 @@ def main():
                                 key=f"edit_recurrent_{selected_ing['id']}"
                             )
                             
-                            st.markdown("---")
-                            st.markdown("**Quantité recommandée par personne**")
-                            col5, col6 = st.columns(2)
-                            with col5:
-                                new_quantite_reco = st.number_input(
-                                    "Quantité",
-                                    min_value=0.0,
-                                    value=float(selected_ing.get('quantite_recommandee') or 0) if selected_ing.get('quantite_recommandee') else 0.0,
-                                    step=0.5,
-                                    key=f"edit_quantite_reco_{selected_ing['id']}"
-                                )
-                            with col6:
-                                current_unite_reco = selected_ing.get('unite_recommandee') or selected_ing.get('unit', 'g')
-                                unite_index = UNITES.index(current_unite_reco) if current_unite_reco in UNITES else 0
-                                new_unite_reco = st.selectbox(
-                                    "Unité",
-                                    UNITES,
-                                    index=unite_index,
-                                    key=f"edit_unite_reco_{selected_ing['id']}"
-                                )
-                            
-                            st.markdown("---")
-                            col7, col8 = st.columns(2)
-                            with col7:
-                                new_poids = st.number_input(
-                                    "Poids d'une pièce (g)",
-                                    min_value=0.0,
-                                    value=float(selected_ing.get('poids_piece_g') or 0) if selected_ing.get('poids_piece_g') else 0.0,
-                                    step=10.0,
-                                    key=f"edit_poids_{selected_ing['id']}"
-                                )
-                            with col8:
-                                current_unite_liste = selected_ing.get('unite_liste_courses', 'kg')
-                                unite_liste_index = UNITES_LISTE_COURSES.index(current_unite_liste) if current_unite_liste in UNITES_LISTE_COURSES else 0
-                                new_unite_liste = st.selectbox(
-                                    "Unité liste de courses",
-                                    UNITES_LISTE_COURSES,
-                                    index=unite_liste_index,
-                                    key=f"edit_unite_liste_{selected_ing['id']}"
-                                )
-                            
-                            new_densite = st.number_input(
-                                "Densité (g/ml)",
-                                min_value=0.1,
-                                value=float(selected_ing.get('densite', 1.0)),
-                                step=0.01,
-                                key=f"edit_densite_{selected_ing['id']}"
+                            new_poids = st.number_input(
+                                "Poids d'une pièce (en grammes)",
+                                min_value=0.0,
+                                value=float(selected_ing.get('poids_piece_g') or 0) if selected_ing.get('poids_piece_g') else 0.0,
+                                step=10.0,
+                                key=f"edit_poids_{selected_ing['id']}"
                             )
                             
                             col_save, col_del = st.columns(2)
@@ -1722,16 +1621,10 @@ def main():
                                         "unit": new_unit,
                                         "category": new_category,
                                         "exclude_from_list": new_exclude,
-                                        "is_recurrent": new_recurrent,
-                                        "densite": new_densite,
-                                        "unite_liste_courses": new_unite_liste
+                                        "is_recurrent": new_recurrent
                                     }
                                     if 'poids_piece_g' in selected_ing:
                                         update_data["poids_piece_g"] = new_poids if new_poids > 0 else None
-                                    if 'quantite_recommandee' in selected_ing:
-                                        update_data["quantite_recommandee"] = new_quantite_reco if new_quantite_reco > 0 else None
-                                    if 'unite_recommandee' in selected_ing:
-                                        update_data["unite_recommandee"] = new_unite_reco if new_quantite_reco > 0 else None
                                     
                                     supabase.table("ingredients").update(update_data).eq("id", selected_ing['id']).execute()
                                     refresh_data()
