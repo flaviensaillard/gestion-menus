@@ -463,7 +463,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         for item in aggregated_items.values():
             by_cat[item.get('category', 'Autre')].append(item)
         
-        if not by_cat:
+                if not by_cat:
             pdf.set_xy(right_x + 3, y_right)
             pdf.set_font('Helvetica', 'I', courses_font_size)
             pdf.cell(right_width - 6, 5, 'Aucun article', ln=True)
@@ -479,12 +479,15 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     pdf.set_font('Helvetica', '', courses_font_size)
                     for it in by_cat[cat]:
-                        qty_str = format_quantity(it['qty_kg'])
+                        # Utiliser l'unité de liste de courses
+                        unit = it.get('unit_liste', it.get('unit', 'kg'))
+                        qty = it.get('qty', it.get('qty_kg', 0))
+                        qty_str = format_quantity(qty)
                         checkbox_size = 2.5
                         pdf.set_draw_color(100, 100, 100)
                         pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
                         
-                        line = f"{it['name']} : {qty_str} kg"
+                        line = f"{it['name']} : {qty_str} {unit}"
                         pdf.set_xy(right_x + 7, y_right)
                         pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(line), ln=True)
                         y_right += courses_line_height
