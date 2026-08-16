@@ -604,8 +604,6 @@ def main():
 
     # Navigation par boutons
     col_nav1, col_nav2, col_nav3, col_nav4, col_nav5 = st.columns(5)
-    nav_labels = ["Menus du jour", "Menus", "Consulter", "Créer / Éditer", "Ingrédients"]
-    nav_emojis = ["📅", "📅", "🔍", "✏️", "🥕"]
     
     with col_nav1:
         if st.button("📅 Menus du jour", key="nav_menus_jour", use_container_width=True,
@@ -767,7 +765,8 @@ def main():
             if 'selected_start_date' not in st.session_state:
                 st.session_state.selected_start_date = date.today()
             
-            col_calendar, col_info = st.columns([1, 3])
+            # Ligne avec date + bouton vider
+            col_calendar, col_info, col_clear_btn = st.columns([1, 2, 1])
             with col_calendar:
                 start_date = st.date_input(
                     "Date de début",
@@ -778,6 +777,16 @@ def main():
             with col_info:
                 end_date = start_date + timedelta(days=6)
                 st.info(f"📅 Semaine du {start_date.strftime('%d/%m/%Y')} au {end_date.strftime('%d/%m/%Y')}")
+            with col_clear_btn:
+                st.write("")
+                if st.button("🗑️ Vider toute la semaine", key="clear_week_top", use_container_width=True):
+                    week_dates_clear = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
+                    for date_str in week_dates_clear:
+                        meals_to_delete = [pm for pm in planned_meals if pm.get('date_menu') == date_str]
+                        for meal in meals_to_delete:
+                            supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
+                    st.success("✅ Semaine vidée !")
+                    refresh_data()
             
             st.markdown("---")
             
@@ -1213,7 +1222,7 @@ def main():
                         st.rerun()
             
             with col_clear:
-                if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
+                if st.button("🗑️ Vider toute la semaine", key="clear_week_bottom", use_container_width=True):
                     try:
                         week_dates = [d['date'].isoformat() for d in week_days]
                         for date_str in week_dates:
@@ -1261,7 +1270,6 @@ def main():
         if not recipes:
             st.info("Aucune recette disponible.")
         else:
-            # Vérifier si une recette a été sélectionnée depuis "Menus du jour"
             if 'selected_recipe_for_consult' in st.session_state:
                 selected_recipe_id = st.session_state.selected_recipe_for_consult
                 selected_recipe = next((r for r in recipes if r['id'] == selected_recipe_id), None)
@@ -1890,6 +1898,12 @@ def main():
                     
                     if selected_ing:
                         with st.form(f"edit_ing_form_{selected_ing['id']}"):
+                            # Champ pour éditer le nom
+                            new_name = st.text_input(
+                                "Nom", 
+                                value=selected_ing['name'],
+                                key=f"edit_name_{selected_ing['id']}"
+                            )
                             col1, col2 = st.columns(2)
                             new_unit = col1.selectbox(
                                 "Unité", 
@@ -1942,6 +1956,7 @@ def main():
                             if save_clicked:
                                 try:
                                     update_data = {
+                                        "name": new_name.strip().capitalize(),
                                         "unit": new_unit,
                                         "category": new_category,
                                         "exclude_from_list": new_exclude,
@@ -1952,6 +1967,13 @@ def main():
                                         update_data["poids_piece_g"] = new_poids if new_poids > 0 else None
                                     
                                     supabase.table("ingredients").update(update_data).eq("id", selected_ing['id']).execute()
+                                    
+                                    # Mettre à jour les recettes [Ing] associées
+                                    if new_name.strip().capitalize() != selected_ing['name']:
+                                        supabase.table("recipes").update({
+                                            "name": f"[Ing] {new_name.strip().capitalize()}"
+                                        }).eq("name", f"[Ing] {selected_ing['name']}").execute()
+                                    
                                     refresh_data()
                                 except Exception as e:
                                     st.error(f"Erreur : {e}")
