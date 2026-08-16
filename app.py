@@ -185,7 +185,6 @@ def open_pdf_button(pdf_bytes: bytes):
 
 def convert_to_unit(quantity: float, unit_source: str, unit_cible: str, poids_piece_g: float = None) -> float:
     """Convertit une quantité vers l'unité cible."""
-    # D'abord convertir en kg
     unit_source = unit_source.lower().strip() if unit_source else ""
     unit_cible = unit_cible.lower().strip() if unit_cible else ""
     
@@ -473,6 +472,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             y += day_height + day_gap
         
+        # Colonne droite : Liste de courses
         y_right = margin
         
         pdf.set_fill_color(*orange_bg)
@@ -502,10 +502,8 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     pdf.set_font('Helvetica', '', courses_font_size)
                     for it in by_cat[cat]:
-                        # Utiliser l'unité de liste de courses
-                        unit = it.get('unit_liste', it.get('unit', 'kg'))
-                        qty = it.get('qty', it.get('qty_kg', 0))
-                        qty_str = format_quantity(qty)
+                        qty_str = format_quantity(it['qty'])
+                        unit = it.get('unit', '')
                         checkbox_size = 2.5
                         pdf.set_draw_color(100, 100, 100)
                         pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
@@ -517,6 +515,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
+        # Produits récurrents
         if recurrent_items:
             y_right += 3
             
@@ -871,14 +870,17 @@ def main():
                             ing_name = get_display_name(rec)
                             ing = next((i for i in ingredients_dict.values() if i['name'] == ing_name), None)
                             if ing and not ing.get('exclude_from_list'):
-                                qty_kg = convert_to_kg(pm['servings'], ing['unit'], ing.get('poids_piece_g'))
+                                unite_liste = ing.get('unite_liste_course') or ing['unit']
+                                qty = convert_to_unit(pm['servings'], ing['unit'], unite_liste, ing.get('poids_piece_g'))
+                                
                                 if ing['id'] not in aggregated:
                                     aggregated[ing['id']] = {
                                         "name": ing['name'],
-                                        "qty_kg": 0,
+                                        "qty": 0,
+                                        "unit": unite_liste,
                                         "category": ing.get('category', 'Autre')
                                     }
-                                aggregated[ing['id']]['qty_kg'] += qty_kg
+                                aggregated[ing['id']]['qty'] += qty
                         elif not rec['name'].startswith('[Txt] '):
                             ratio = pm['servings'] / rec.get('base_servings', 1)
                             for ri in recipe_ings:
@@ -888,14 +890,17 @@ def main():
                                         continue
                                     
                                     ri_unit = ri.get('unit') or ing['unit']
-                                    qty_kg = convert_to_kg(ri['quantity'] * ratio, ri_unit, ing.get('poids_piece_g'))
+                                    unite_liste = ing.get('unite_liste_course') or ing['unit']
+                                    qty = convert_to_unit(ri['quantity'] * ratio, ri_unit, unite_liste, ing.get('poids_piece_g'))
+                                    
                                     if ing['id'] not in aggregated:
                                         aggregated[ing['id']] = {
                                             "name": ing['name'],
-                                            "qty_kg": 0,
+                                            "qty": 0,
+                                            "unit": unite_liste,
                                             "category": ing.get('category', 'Autre')
                                         }
-                                    aggregated[ing['id']]['qty_kg'] += qty_kg
+                                    aggregated[ing['id']]['qty'] += qty
                     
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
@@ -1480,16 +1485,20 @@ def main():
                 recurrent = col4.checkbox("🔁 Récurrent", key="new_ing_recurrent")
                 
                 st.markdown("---")
-                st.markdown("**Poids par pièce (optionnel)**")
-                st.caption("Permet de convertir les pièces en kg dans la liste de courses")
-                
-                poids_piece = st.number_input(
+                col5, col6 = st.columns(2)
+                unite_liste = col5.selectbox(
+                    "Unité liste de courses",
+                    ["-"] + UNITES,
+                    key="new_ing_unite_liste",
+                    help="Unité à utiliser dans la liste de courses"
+                )
+                poids_piece = col6.number_input(
                     "Poids d'une pièce (en grammes)",
                     min_value=0.0,
                     value=0.0,
                     step=10.0,
                     key="new_ing_poids_piece",
-                    help="Ex: 1 tomate = 150g, 1 œuf = 55g"
+                    help="Ex: 1 tomate = 150g"
                 )
                 
                 col_submit, col_cancel = st.columns(2)
@@ -1511,7 +1520,8 @@ def main():
                                 "category": category,
                                 "exclude_from_list": exclude,
                                 "is_recurrent": recurrent,
-                                "poids_piece_g": poids_piece if poids_piece > 0 else None
+                                "poids_piece_g": poids_piece if poids_piece > 0 else None,
+                                "unite_liste_course": unite_liste if unite_liste != "-" else None
                             }
                             
                             supabase.table("ingredients").insert(data_to_insert).execute()
@@ -1528,26 +1538,26 @@ def main():
         
         if ingredients:
             has_poids = 'poids_piece_g' in ingredients[0] if ingredients else False
+            has_unite_liste = 'unite_liste_course' in ingredients[0] if ingredients else False
+            
+            columns_to_show = ['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent']
+            column_config = {
+                "name": "Nom",
+                "unit": "Unité",
+                "category": "Rayon",
+                "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
+                "is_recurrent": st.column_config.CheckboxColumn("Récurrent")
+            }
             
             if has_poids:
-                df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent', 'poids_piece_g']]
-                column_config = {
-                    "name": "Nom",
-                    "unit": "Unité",
-                    "category": "Rayon",
-                    "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
-                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent"),
-                    "poids_piece_g": st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f")
-                }
-            else:
-                df_display = pd.DataFrame(ingredients)[['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent']]
-                column_config = {
-                    "name": "Nom",
-                    "unit": "Unité",
-                    "category": "Rayon",
-                    "exclude_from_list": st.column_config.CheckboxColumn("Fond de placard"),
-                    "is_recurrent": st.column_config.CheckboxColumn("Récurrent")
-                }
+                columns_to_show.append('poids_piece_g')
+                column_config["poids_piece_g"] = st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f")
+            
+            if has_unite_liste:
+                columns_to_show.append('unite_liste_course')
+                column_config["unite_liste_course"] = "Unité liste"
+            
+            df_display = pd.DataFrame(ingredients)[columns_to_show]
             
             st.dataframe(
                 df_display,
@@ -1596,7 +1606,17 @@ def main():
                                 key=f"edit_recurrent_{selected_ing['id']}"
                             )
                             
-                            new_poids = st.number_input(
+                            st.markdown("---")
+                            col5, col6 = st.columns(2)
+                            current_unite_liste = selected_ing.get('unite_liste_course')
+                            unite_liste_index = UNITES.index(current_unite_liste) + 1 if current_unite_liste in UNITES else 0
+                            new_unite_liste = col5.selectbox(
+                                "Unité liste de courses",
+                                ["-"] + UNITES,
+                                index=unite_liste_index,
+                                key=f"edit_unite_liste_{selected_ing['id']}"
+                            )
+                            new_poids = col6.number_input(
                                 "Poids d'une pièce (en grammes)",
                                 min_value=0.0,
                                 value=float(selected_ing.get('poids_piece_g') or 0) if selected_ing.get('poids_piece_g') else 0.0,
@@ -1616,7 +1636,8 @@ def main():
                                         "unit": new_unit,
                                         "category": new_category,
                                         "exclude_from_list": new_exclude,
-                                        "is_recurrent": new_recurrent
+                                        "is_recurrent": new_recurrent,
+                                        "unite_liste_course": new_unite_liste if new_unite_liste != "-" else None
                                     }
                                     if 'poids_piece_g' in selected_ing:
                                         update_data["poids_piece_g"] = new_poids if new_poids > 0 else None
