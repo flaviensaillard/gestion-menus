@@ -109,6 +109,12 @@ def format_quantity(qty: float) -> str:
         return str(int(qty))
     return f"{qty:.2f}".rstrip('0').rstrip('.')
 
+def format_servings(servings: float) -> str:
+    """Formate le nombre de convives sans décimales inutiles."""
+    if servings == int(servings):
+        return str(int(servings))
+    return str(servings)
+
 def instructions_to_text(instructions_list: List[str]) -> str:
     if not instructions_list:
         return ""
@@ -406,7 +412,8 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             if has_midi_content:
                 midi_servings = max([item['servings'] for item in midi_items if item['has_recipe']], default=1)
-                midi_label = f'Déjeuner ({midi_servings}P) :'
+                midi_servings_str = format_servings(midi_servings)
+                midi_label = f'Déjeuner ({midi_servings_str}) :'
             else:
                 midi_label = 'Déjeuner :'
             
@@ -442,7 +449,8 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             if has_soir_content:
                 soir_servings = max([item['servings'] for item in soir_items if item['has_recipe']], default=1)
-                soir_label = f'Dîner ({soir_servings}P) :'
+                soir_servings_str = format_servings(soir_servings)
+                soir_label = f'Dîner ({soir_servings_str}) :'
             else:
                 soir_label = 'Dîner :'
             
@@ -511,6 +519,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
+        # Produits récurrents sur 2 colonnes
         if recurrent_items:
             y_right += 3
             
@@ -520,17 +529,34 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             pdf.cell(right_width, 7, 'Produits récurrents', ln=True, fill=True, align='C')
             y_right += 9
             
+            # Afficher en 2 colonnes
+            col_width = (right_width - 10) / 2
             pdf.set_font('Helvetica', '', courses_font_size)
-            for rec in recurrent_items:
+            
+            for idx, rec in enumerate(recurrent_items):
                 if y_right > page_height - margin - 2:
                     break
                 
+                # Position en colonne (gauche ou droite)
+                if idx % 2 == 0:
+                    x_pos = right_x + 3
+                else:
+                    x_pos = right_x + 5 + col_width
+                
                 checkbox_size = 2.5
                 pdf.set_draw_color(100, 100, 100)
-                pdf.rect(right_x + 3, y_right + 1, checkbox_size, checkbox_size, 'D')
+                pdf.rect(x_pos, y_right + 1, checkbox_size, checkbox_size, 'D')
                 
-                pdf.set_xy(right_x + 7, y_right)
-                pdf.cell(right_width - 10, courses_line_height, clean_pdf_str(rec['name']), ln=True)
+                pdf.set_xy(x_pos + 4, y_right)
+                pdf.cell(col_width - 4, courses_line_height, clean_pdf_str(rec['name']), ln=False)
+                
+                # Passer à la ligne après 2 colonnes
+                if idx % 2 == 1:
+                    y_right += courses_line_height
+                    pdf.ln()
+            
+            # Si nombre impair, terminer la ligne
+            if len(recurrent_items) % 2 != 0:
                 y_right += courses_line_height
 
         return bytes(pdf.output())
@@ -634,7 +660,7 @@ def main():
                                 if has_content:
                                     servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
                                     servings = max(servings_list) if servings_list else 1
-                                    st.markdown(f"**{label} ({servings}p) :**")
+                                    st.markdown(f"**{label} ({format_servings(servings)}p) :**")
                                 else:
                                     st.markdown(f"**{label} :**")
                                 
