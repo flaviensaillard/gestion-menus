@@ -607,9 +607,8 @@ def main():
         
         nav_options = ["📅 Menus du jour", "📅 Menus", "🔍 Consulter", "✏️ Créer / Éditer", "🥕 Ingrédients"]
         
-        # Si on vient de cliquer sur un lien recette, forcer l'onglet Consulter
         if 'force_consult' in st.session_state and st.session_state.force_consult:
-            current_index = 2  # Index de "🔍 Consulter"
+            current_index = 2
         else:
             current_index = nav_options.index(st.session_state.active_tab) if st.session_state.active_tab in nav_options else 0
         
@@ -621,7 +620,6 @@ def main():
         )
         st.session_state.active_tab = page_choisie
         
-        # Supprimer force_consult après utilisation
         if 'force_consult' in st.session_state:
             del st.session_state.force_consult
         
@@ -690,6 +688,7 @@ def main():
                             else:
                                 if st.button(f"🔗 {item_name}", key=f"link_midi_{meal['id']}", help="Voir la recette"):
                                     st.session_state.selected_recipe_for_consult = rec['id']
+                                    st.session_state.selected_recipe_servings = meal.get('servings', rec.get('base_servings', 4))
                                     st.session_state.active_tab = "🔍 Consulter"
                                     st.session_state.force_consult = True
                                     st.rerun()
@@ -724,6 +723,7 @@ def main():
                             else:
                                 if st.button(f"🔗 {item_name}", key=f"link_soir_{meal['id']}", help="Voir la recette"):
                                     st.session_state.selected_recipe_for_consult = rec['id']
+                                    st.session_state.selected_recipe_servings = meal.get('servings', rec.get('base_servings', 4))
                                     st.session_state.active_tab = "🔍 Consulter"
                                     st.session_state.force_consult = True
                                     st.rerun()
@@ -1194,7 +1194,22 @@ def main():
                         st.subheader(f"📖 {recipe['name']}")
                     with col_servings:
                         base_servings = recipe.get('base_servings', 4)
-                        target_servings = st.number_input("Nombre de personnes", min_value=1, max_value=50, value=base_servings, step=1, key=f"consult_servings_{recipe['id']}")
+                        
+                        # Utiliser le nombre de convives transmis depuis "Menus du jour"
+                        if 'selected_recipe_servings' in st.session_state:
+                            default_servings = int(st.session_state.selected_recipe_servings)
+                            del st.session_state.selected_recipe_servings
+                        else:
+                            default_servings = base_servings
+                        
+                        target_servings = st.number_input(
+                            "Nombre de personnes",
+                            min_value=1,
+                            max_value=50,
+                            value=default_servings,
+                            step=1,
+                            key=f"consult_servings_{recipe['id']}"
+                        )
                     
                     ratio = target_servings / base_servings if base_servings > 0 else 1
                     
@@ -1210,7 +1225,6 @@ def main():
                                 qty_display = format_quantity(qty_adjusted)
                                 display_unit = ri.get('unit') or ing['unit']
                                 
-                                # Affichage sans le rayon
                                 col1, col2 = st.columns([2, 1])
                                 with col1:
                                     st.markdown(f"**{ing['name']}**")
