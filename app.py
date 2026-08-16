@@ -599,12 +599,126 @@ def main():
     if 'data' not in st.session_state:
         st.session_state.data = load_data()
 
-    tab_menus, tab_consulter, tab_editer, tab_ingredients = st.tabs([
+    tab_menus_jour, tab_menus, tab_consulter, tab_editer, tab_ingredients = st.tabs([
+        "📅 Menus du jour",
         "📅 Menus", 
         "🔍 Consulter", 
         "✏️ Créer / Éditer", 
         "🥕 Ingrédients"
     ])
+
+    # ============================
+    # ONGLET 0 : MENUS DU JOUR
+    # ============================
+    with tab_menus_jour:
+        st.header("Menus du jour")
+        
+        planned_meals = st.session_state.data.get('planned_meals', [])
+        all_recipes = st.session_state.data.get('recipes', [])
+        recipes_dict = {r['id']: r for r in all_recipes}
+        ingredients = st.session_state.data.get('ingredients', [])
+        
+        col_date, col_info = st.columns([1, 3])
+        with col_date:
+            selected_date = st.date_input(
+                "Date",
+                value=date.today(),
+                key="menu_jour_date"
+            )
+        with col_info:
+            day_name_fr = JOURS_FR.get(selected_date.strftime('%A'), selected_date.strftime('%A'))
+            st.info(f"📅 {day_name_fr} {selected_date.strftime('%d/%m/%Y')}")
+        
+        st.markdown("---")
+        
+        date_str = selected_date.isoformat()
+        day_meals = [
+            pm for pm in planned_meals 
+            if pm.get('date_menu') == date_str
+            or (pm.get('date_menu') is None and pm.get('day') == day_name_fr)
+        ]
+        
+        meals_by_type = defaultdict(list)
+        for meal in day_meals:
+            meals_by_type[meal['meal_type']].append(meal)
+        
+        if not day_meals:
+            st.info("Aucun repas planifié pour ce jour.")
+        else:
+            # Déjeuner
+            st.markdown(f"### 🍳 Déjeuner")
+            if 'Midi' in meals_by_type:
+                meals = meals_by_type['Midi']
+                servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
+                servings = max(servings_list) if servings_list else None
+                
+                if servings:
+                    st.markdown(f"**({format_servings(servings)} personnes)**")
+                
+                for meal in meals:
+                    if meal.get('recipe_id'):
+                        rec = recipes_dict.get(meal.get('recipe_id'))
+                        if rec:
+                            item_name = get_display_name(rec)
+                            
+                            if rec['name'].startswith('[Ing] '):
+                                ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
+                                if ing_obj:
+                                    qty = meal.get('ingredient_qty') or meal.get('servings', 1)
+                                    st.markdown(f"• {item_name} : {format_quantity(qty)} {ing_obj['unit']}")
+                                else:
+                                    st.markdown(f"• {item_name}")
+                            
+                            elif rec['name'].startswith('[Txt] '):
+                                st.markdown(f"• {item_name}")
+                            
+                            else:
+                                # Recette normale - lien cliquable
+                                if st.button(f"🔗 {item_name}", key=f"link_midi_{meal['id']}", help="Voir la recette"):
+                                    st.session_state.selected_recipe_for_consult = rec['id']
+                                    st.rerun()
+                    else:
+                        st.markdown(f"• -")
+            else:
+                st.markdown("*Aucun déjeuner planifié*")
+            
+            st.markdown("---")
+            
+            # Dîner
+            st.markdown(f"### 🌙 Dîner")
+            if 'Soir' in meals_by_type:
+                meals = meals_by_type['Soir']
+                servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
+                servings = max(servings_list) if servings_list else None
+                
+                if servings:
+                    st.markdown(f"**({format_servings(servings)} personnes)**")
+                
+                for meal in meals:
+                    if meal.get('recipe_id'):
+                        rec = recipes_dict.get(meal.get('recipe_id'))
+                        if rec:
+                            item_name = get_display_name(rec)
+                            
+                            if rec['name'].startswith('[Ing] '):
+                                ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
+                                if ing_obj:
+                                    qty = meal.get('ingredient_qty') or meal.get('servings', 1)
+                                    st.markdown(f"• {item_name} : {format_quantity(qty)} {ing_obj['unit']}")
+                                else:
+                                    st.markdown(f"• {item_name}")
+                            
+                            elif rec['name'].startswith('[Txt] '):
+                                st.markdown(f"• {item_name}")
+                            
+                            else:
+                                if st.button(f"🔗 {item_name}", key=f"link_soir_{meal['id']}", help="Voir la recette"):
+                                    st.session_state.selected_recipe_for_consult = rec['id']
+                                    st.rerun()
+                    else:
+                        st.markdown(f"• -")
+            else:
+                st.markdown("*Aucun dîner planifié*")
 
     # ============================
     # ONGLET 1 : MENUS
@@ -714,7 +828,6 @@ def main():
                                             except Exception as e:
                                                 st.error(f"Erreur : {e}")
                                     
-                                    # Formulaire d'édition
                                     if st.session_state.get(f"show_edit_{meal['id']}", False):
                                         with st.expander(f"✏️ Modifier : {item_name}", expanded=True):
                                             rec = recipes_dict.get(meal.get('recipe_id'))
@@ -1119,12 +1232,25 @@ def main():
         recipes = sort_list_by_name([r for r in all_recipes if not r['name'].startswith('[Ing] ') and not r['name'].startswith('[Txt] ')])
         
         if not recipes:
-            st.info("Aucune recette disponible. Créez-en une dans l'onglet 'Créer / Éditer'.")
+            st.info("Aucune recette disponible.")
         else:
+            # Vérifier si une recette a été sélectionnée depuis "Menus du jour"
+            if 'selected_recipe_for_consult' in st.session_state:
+                selected_recipe_id = st.session_state.selected_recipe_for_consult
+                selected_recipe = next((r for r in recipes if r['id'] == selected_recipe_id), None)
+                if selected_recipe:
+                    default_index = recipes.index(selected_recipe) + 1
+                    del st.session_state.selected_recipe_for_consult
+                else:
+                    default_index = 0
+            else:
+                default_index = 0
+            
             recipe_names = ["-"] + [r['name'] for r in recipes]
             selected_name = st.selectbox(
                 "Choisir une recette", 
                 recipe_names,
+                index=default_index,
                 key="consult_recipe_select"
             )
             
