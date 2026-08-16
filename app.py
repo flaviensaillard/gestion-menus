@@ -279,31 +279,38 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 current_date = start_date + timedelta(days=i)
                 english_day = current_date.strftime('%A')
                 french_day = JOURS_FR.get(english_day, english_day)
-                week_days.append({'day_name': french_day})
+                week_days.append({'day_name': french_day, 'date': current_date})
         else:
-            week_days = [{'day_name': d} for d in JOURS]
+            week_days = [{'day_name': d, 'date': None} for d in JOURS]
         
-        # Regrouper les repas
+        # Regrouper les repas par date et type
         schedule = {}
         for day_info in week_days:
             day_name = day_info['day_name']
+            day_date = day_info['date']
             schedule[day_name] = {"Midi": [], "Soir": []}
             
             for pm in planned_meals:
-                if pm.get('day') == day_name:
-                    rec = recipes_dict.get(pm.get('recipe_id'))
-                    if rec:
-                        rec_name = get_display_name(rec)
-                    else:
-                        rec_name = 'Inconnu'
-                    
-                    meal_type = pm.get('meal_type')
-                    if meal_type in schedule[day_name]:
-                        schedule[day_name][meal_type].append({
-                            'name': rec_name,
-                            'servings': pm.get('servings', 1),
-                            'has_recipe': pm.get('recipe_id') is not None
-                        })
+                # Filtrer par date si disponible
+                if day_date and pm.get('date_menu'):
+                    if pm.get('date_menu') != day_date.isoformat():
+                        continue
+                elif pm.get('day') != day_name:
+                    continue
+                
+                rec = recipes_dict.get(pm.get('recipe_id'))
+                if rec:
+                    rec_name = get_display_name(rec)
+                else:
+                    rec_name = 'Inconnu'
+                
+                meal_type = pm.get('meal_type')
+                if meal_type in schedule[day_name]:
+                    schedule[day_name][meal_type].append({
+                        'name': rec_name,
+                        'servings': pm.get('servings', 1),
+                        'has_recipe': pm.get('recipe_id') is not None
+                    })
         
         # En-tête
         pdf.set_font('Helvetica', 'B', title_font_size)
@@ -629,7 +636,13 @@ def main():
                     else:
                         st.markdown(f"### 📅 {day_info['day_name']} {day_info['day_number']}")
                     
-                    day_meals = [pm for pm in planned_meals if pm['day'] == day_info['day_name']]
+                    # Filtrer les repas par date exacte
+                    day_date_str = day_info['date'].isoformat()
+                    day_meals = [
+                        pm for pm in planned_meals 
+                        if pm.get('date_menu') == day_date_str
+                        or (pm.get('date_menu') is None and pm.get('day') == day_info['day_name'])
+                    ]
                     
                     meals_by_type = defaultdict(list)
                     for meal in day_meals:
@@ -783,6 +796,7 @@ def main():
                                         if item_type == "Recette" and selected_recipe:
                                             supabase.table("planned_meals").insert({
                                                 "day": day_info['day_name'],
+                                                "date_menu": day_info['date'].isoformat(),
                                                 "meal_type": meal_type,
                                                 "recipe_id": selected_recipe['id'],
                                                 "servings": servings
@@ -819,6 +833,7 @@ def main():
                                                 
                                                 supabase.table("planned_meals").insert({
                                                     "day": day_info['day_name'],
+                                                    "date_menu": day_info['date'].isoformat(),
                                                     "meal_type": meal_type,
                                                     "recipe_id": ing_recipe_id,
                                                     "servings": servings
@@ -833,12 +848,13 @@ def main():
                                             if txt_recipe.data:
                                                 supabase.table("planned_meals").insert({
                                                     "day": day_info['day_name'],
+                                                    "date_menu": day_info['date'].isoformat(),
                                                     "meal_type": meal_type,
                                                     "recipe_id": txt_recipe.data[0]['id'],
                                                     "servings": 1
                                                 }).execute()
                                         
-                                        st.success(f"✅ Ajouté pour {day_info['day_name']} !")
+                                        st.success(f"✅ Ajouté pour {day_info['day_name']} {day_info['day_number']} !")
                                         st.session_state[expander_key] = True
                                         refresh_data()
                                     except Exception as e:
@@ -860,8 +876,12 @@ def main():
                     ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
                     recipe_ings = st.session_state.data.get('recipe_ingredients', [])
                     
+                    # Filtrer les repas de la semaine sélectionnée
+                    week_dates = [d['date'].isoformat() for d in week_days]
+                    week_meals = [pm for pm in planned_meals if pm.get('date_menu') in week_dates]
+                    
                     aggregated = {}
-                    for pm in planned_meals:
+                    for pm in week_meals:
                         rec = recipes_dict.get(pm['recipe_id'])
                         if not rec:
                             continue
@@ -886,9 +906,7 @@ def main():
                                     if not ing or ing.get('exclude_from_list'):
                                         continue
                                     
-                                    # Utiliser l'unité de la recette si elle existe
                                     ri_unit = ri.get('unit') or ing['unit']
-                                    
                                     qty_kg = convert_to_kg(ri['quantity'] * ratio, ri_unit, ing.get('poids_piece_g'))
                                     if ing['id'] not in aggregated:
                                         aggregated[ing['id']] = {
@@ -901,7 +919,7 @@ def main():
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
                     pdf_bytes = generate_pdf(
-                        planned_meals, 
+                        week_meals, 
                         aggregated, 
                         recurrent, 
                         recipes_dict,
@@ -915,9 +933,9 @@ def main():
             with col_clear:
                 if st.button("🗑️ Vider toute la semaine", key="clear_week", use_container_width=True):
                     try:
-                        days_to_clear = [d['day_name'] for d in week_days]
-                        for day_name in days_to_clear:
-                            meals_to_delete = [pm for pm in planned_meals if pm['day'] == day_name]
+                        week_dates = [d['date'].isoformat() for d in week_days]
+                        for date_str in week_dates:
+                            meals_to_delete = [pm for pm in planned_meals if pm.get('date_menu') == date_str]
                             for meal in meals_to_delete:
                                 supabase.table("planned_meals").delete().eq("id", meal['id']).execute()
                         st.success("✅ Semaine vidée !")
@@ -1003,8 +1021,6 @@ def main():
                             if ing:
                                 qty_adjusted = ri['quantity'] * ratio
                                 qty_display = format_quantity(qty_adjusted)
-                                
-                                # Utiliser l'unité de la recette si elle existe, sinon celle de l'ingrédient
                                 display_unit = ri.get('unit') or ing['unit']
                                 
                                 col1, col2, col3 = st.columns([3, 2, 2])
@@ -1333,7 +1349,6 @@ def main():
                                 for ri in rec_ings:
                                     ing = next((i for i in ingredients if i['id'] == ri['ingredient_id']), None)
                                     if ing:
-                                        # Utiliser l'unité de la recette si elle existe
                                         display_unit = ri.get('unit') or ing['unit']
                                         
                                         col1, col2, col3 = st.columns([4, 2, 1])
