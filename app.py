@@ -183,30 +183,53 @@ def open_pdf_button(pdf_bytes: bytes):
     
     components.html(html_component, height=60)
 
-def convert_to_kg(quantity: float, unit: str, poids_piece_g: float = None) -> float:
-    unit = unit.lower().strip() if unit else ""
+def convert_to_unit(quantity: float, unit_source: str, unit_cible: str, poids_piece_g: float = None) -> float:
+    """Convertit une quantité vers l'unité cible."""
+    # D'abord convertir en kg
+    unit_source = unit_source.lower().strip() if unit_source else ""
+    unit_cible = unit_cible.lower().strip() if unit_cible else ""
     
-    if unit in ['g', 'gramme', 'grammes']:
-        return quantity / 1000
-    elif unit in ['kg', 'kilo', 'kilos']:
-        return quantity
-    elif unit in ['ml', 'millilitre']:
-        return quantity / 1000
-    elif unit in ['cl', 'centilitre']:
-        return quantity / 100
-    elif unit in ['l', 'litre']:
-        return quantity
-    elif unit in ['c. à soupe', 'cuillère à soupe']:
-        return quantity * 0.015
-    elif unit in ['c. à café', 'cuillère à café']:
-        return quantity * 0.005
-    elif unit in ['unité', 'pièce', 'tranche', 'gousse', 'sachet', 'boîte', 'barquette']:
+    # Conversion vers kg
+    if unit_source in ['g', 'gramme', 'grammes']:
+        qty_kg = quantity / 1000
+    elif unit_source in ['kg', 'kilo', 'kilos']:
+        qty_kg = quantity
+    elif unit_source in ['ml', 'millilitre']:
+        qty_kg = quantity / 1000
+    elif unit_source in ['cl', 'centilitre']:
+        qty_kg = quantity / 100
+    elif unit_source in ['l', 'litre']:
+        qty_kg = quantity
+    elif unit_source in ['c. à soupe', 'cuillère à soupe']:
+        qty_kg = quantity * 0.015
+    elif unit_source in ['c. à café', 'cuillère à café']:
+        qty_kg = quantity * 0.005
+    elif unit_source in ['unité', 'pièce', 'tranche', 'gousse', 'sachet', 'boîte', 'barquette']:
         if poids_piece_g is not None and poids_piece_g > 0:
-            return (quantity * poids_piece_g) / 1000
+            qty_kg = (quantity * poids_piece_g) / 1000
         else:
-            return quantity
+            qty_kg = quantity
+    else:
+        qty_kg = quantity
     
-    return quantity
+    # Conversion depuis kg vers l'unité cible
+    if unit_cible in ['g', 'gramme', 'grammes']:
+        return qty_kg * 1000
+    elif unit_cible in ['kg', 'kilo', 'kilos']:
+        return qty_kg
+    elif unit_cible in ['ml', 'millilitre']:
+        return qty_kg * 1000
+    elif unit_cible in ['cl', 'centilitre']:
+        return qty_kg * 100
+    elif unit_cible in ['l', 'litre']:
+        return qty_kg
+    elif unit_cible in ['unité', 'pièce', 'tranche', 'gousse', 'sachet', 'boîte', 'barquette']:
+        if poids_piece_g is not None and poids_piece_g > 0:
+            return qty_kg * 1000 / poids_piece_g
+        else:
+            return qty_kg
+    else:
+        return qty_kg
 
 # ------------------------------
 # GÉNÉRATION PDF
