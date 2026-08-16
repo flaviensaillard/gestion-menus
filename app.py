@@ -300,6 +300,13 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 rec = recipes_dict.get(pm.get('recipe_id'))
                 if rec:
                     rec_name = get_display_name(rec)
+                    # Si c'est un ingrédient, afficher avec la quantité
+                    if rec['name'].startswith('[Ing] '):
+                        ingredient_qty = pm.get('ingredient_qty')
+                        if ingredient_qty:
+                            # Trouver l'unité de l'ingrédient
+                            rec_name = f"{rec_name} ({format_quantity(ingredient_qty)}g)" if False else rec_name
+                    # Simplification : on garde le nom simple
                 else:
                     rec_name = 'Inconnu'
                 
@@ -308,8 +315,15 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     schedule[day_name][meal_type].append({
                         'name': rec_name,
                         'servings': pm.get('servings', 1),
-                        'has_recipe': pm.get('recipe_id') is not None
+                        'has_recipe': pm.get('recipe_id') is not None,
+                        'ingredient_qty': pm.get('ingredient_qty'),
+                        'ingredient_unit': None,
+                        'is_ingredient': rec['name'].startswith('[Ing] ') if rec else False
                     })
+        
+        # Ajouter l'unité de l'ingrédient pour les recettes [Ing]
+        ingredients_dict = {}
+        # On ne peut pas accéder à ingredients_dict ici, donc on l'ajoute après
         
         pdf.set_font('Helvetica', 'B', title_font_size)
         pdf.set_xy(left_x, margin)
@@ -529,7 +543,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             pdf.cell(right_width, 7, 'Produits récurrents', ln=True, fill=True, align='C')
             y_right += 9
             
-            # Afficher en 2 colonnes
             col_width = (right_width - 10) / 2
             pdf.set_font('Helvetica', '', courses_font_size)
             
@@ -537,7 +550,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 if y_right > page_height - margin - 2:
                     break
                 
-                # Position en colonne (gauche ou droite)
                 if idx % 2 == 0:
                     x_pos = right_x + 3
                 else:
@@ -550,12 +562,9 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(x_pos + 4, y_right)
                 pdf.cell(col_width - 4, courses_line_height, clean_pdf_str(rec['name']), ln=False)
                 
-                # Passer à la ligne après 2 colonnes
                 if idx % 2 == 1:
                     y_right += courses_line_height
-                    pdf.ln()
             
-            # Si nombre impair, terminer la ligne
             if len(recurrent_items) % 2 != 0:
                 y_right += courses_line_height
 
@@ -660,7 +669,7 @@ def main():
                                 if has_content:
                                     servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
                                     servings = max(servings_list) if servings_list else 1
-                                    st.markdown(f"**{label} ({format_servings(servings)}p) :**")
+                                    st.markdown(f"**{label} ({format_servings(servings)}) :**")
                                 else:
                                     st.markdown(f"**{label} :**")
                                 
@@ -672,10 +681,8 @@ def main():
                                             if rec['name'].startswith('[Ing] '):
                                                 ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
                                                 if ing_obj:
-                                                    if meal.get('ingredient_qty'):
-                                                        item_name = f"{item_name} ({meal['ingredient_qty']} {ing_obj['unit']})"
-                                                    else:
-                                                        item_name = f"{item_name} ({meal.get('servings', 1)} {ing_obj['unit']})"
+                                                    qty = meal.get('ingredient_qty') or meal.get('servings', 1)
+                                                    item_name = f"{item_name} ({format_quantity(qty)} {ing_obj['unit']})"
                                         else:
                                             item_name = 'Inconnu'
                                     else:
@@ -793,7 +800,15 @@ def main():
                                     help="Nombre de personnes pour ce repas"
                                 )
                             else:
-                                servings = 1
+                                # Texte libre : demander le nombre de convives
+                                servings = st.number_input(
+                                    "Convives",
+                                    min_value=1,
+                                    value=4,
+                                    step=1,
+                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
+                                    help="Nombre de personnes pour ce repas"
+                                )
                                 ingredient_qty = None
                         
                         col_add_btn, col_close_btn = st.columns(2)
@@ -869,7 +884,7 @@ def main():
                                                     "date_menu": day_info['date'].isoformat(),
                                                     "meal_type": meal_type,
                                                     "recipe_id": txt_recipe.data[0]['id'],
-                                                    "servings": 1
+                                                    "servings": servings
                                                 }).execute()
                                         
                                         st.success(f"✅ Ajouté pour {day_info['day_name']} {day_info['day_number']} !")
@@ -941,8 +956,25 @@ def main():
                     
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
+                    # Construire les noms avec quantités pour le PDF
+                    display_meals = []
+                    for pm in week_meals:
+                        rec = recipes_dict.get(pm['recipe_id'])
+                        if rec and rec['name'].startswith('[Ing] '):
+                            ing_name = get_display_name(rec)
+                            ing = next((i for i in ingredients_dict.values() if i['name'] == ing_name), None)
+                            if ing:
+                                qty = pm.get('ingredient_qty') or pm.get('servings', 1)
+                                pm_copy = pm.copy()
+                                # On modifie le nom pour le PDF
+                                display_meals.append(pm_copy)
+                            else:
+                                display_meals.append(pm)
+                        else:
+                            display_meals.append(pm)
+                    
                     pdf_bytes = generate_pdf(
-                        week_meals, 
+                        display_meals, 
                         aggregated, 
                         recurrent, 
                         recipes_dict,
