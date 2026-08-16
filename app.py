@@ -599,9 +599,9 @@ def main():
         st.session_state.data = load_data()
 
     if 'active_tab' not in st.session_state:
-        st.session_state.active_tab = "Menus du jour"
+        st.session_state.active_tab = "📅 Menus du jour"
 
-    # Navigation dans la sidebar (compatible mobile)
+    # Navigation dans la sidebar
     with st.sidebar:
         st.markdown("### 📱 Navigation")
         page_choisie = st.radio(
@@ -631,11 +631,7 @@ def main():
         
         col_date, col_info = st.columns([1, 2])
         with col_date:
-            selected_date = st.date_input(
-                "Date",
-                value=date.today(),
-                key="menu_jour_date"
-            )
+            selected_date = st.date_input("Date", value=date.today(), key="menu_jour_date")
         with col_info:
             day_name_fr = JOURS_FR.get(selected_date.strftime('%A'), selected_date.strftime('%A'))
             st.info(f"📅 {day_name_fr} {selected_date.strftime('%d/%m/%Y')}")
@@ -661,16 +657,13 @@ def main():
                 meals = meals_by_type['Midi']
                 servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
                 servings = max(servings_list) if servings_list else None
-                
                 if servings:
                     st.markdown(f"**({format_servings(servings)} personnes)**")
-                
                 for meal in meals:
                     if meal.get('recipe_id'):
                         rec = recipes_dict.get(meal.get('recipe_id'))
                         if rec:
                             item_name = get_display_name(rec)
-                            
                             if rec['name'].startswith('[Ing] '):
                                 ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
                                 if ing_obj:
@@ -678,10 +671,8 @@ def main():
                                     st.markdown(f"• {item_name} : {format_quantity(qty)} {ing_obj['unit']}")
                                 else:
                                     st.markdown(f"• {item_name}")
-                            
                             elif rec['name'].startswith('[Txt] '):
                                 st.markdown(f"• {item_name}")
-                            
                             else:
                                 if st.button(f"🔗 {item_name}", key=f"link_midi_{meal['id']}", help="Voir la recette"):
                                     st.session_state.selected_recipe_for_consult = rec['id']
@@ -699,16 +690,13 @@ def main():
                 meals = meals_by_type['Soir']
                 servings_list = [meal.get('servings', 1) for meal in meals if meal.get('recipe_id')]
                 servings = max(servings_list) if servings_list else None
-                
                 if servings:
                     st.markdown(f"**({format_servings(servings)} personnes)**")
-                
                 for meal in meals:
                     if meal.get('recipe_id'):
                         rec = recipes_dict.get(meal.get('recipe_id'))
                         if rec:
                             item_name = get_display_name(rec)
-                            
                             if rec['name'].startswith('[Ing] '):
                                 ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
                                 if ing_obj:
@@ -716,10 +704,8 @@ def main():
                                     st.markdown(f"• {item_name} : {format_quantity(qty)} {ing_obj['unit']}")
                                 else:
                                     st.markdown(f"• {item_name}")
-                            
                             elif rec['name'].startswith('[Txt] '):
                                 st.markdown(f"• {item_name}")
-                            
                             else:
                                 if st.button(f"🔗 {item_name}", key=f"link_soir_{meal['id']}", help="Voir la recette"):
                                     st.session_state.selected_recipe_for_consult = rec['id']
@@ -752,11 +738,7 @@ def main():
             
             col_calendar, col_info, col_clear_btn = st.columns([1, 2, 1])
             with col_calendar:
-                start_date = st.date_input(
-                    "Date de début",
-                    value=st.session_state.selected_start_date,
-                    key="week_start_date_input"
-                )
+                start_date = st.date_input("Date de début", value=st.session_state.selected_start_date, key="week_start_date_input")
                 st.session_state.selected_start_date = start_date
             with col_info:
                 end_date = start_date + timedelta(days=6)
@@ -966,11 +948,7 @@ def main():
                             if item_type == "Recette":
                                 if recipes:
                                     recipe_names = ["-"] + [r['name'] for r in recipes]
-                                    selected_item = st.selectbox(
-                                        "Recette",
-                                        recipe_names,
-                                        key=f"recipe_{day_info['day_name']}_{day_info['day_number']}"
-                                    )
+                                    selected_item = st.selectbox("Recette", recipe_names, key=f"recipe_{day_info['day_name']}_{day_info['day_number']}")
                                     selected_recipe = next((r for r in recipes if r['name'] == selected_item), None) if selected_item != "-" else None
                                     default_servings = selected_recipe.get('base_servings', 4) if selected_recipe else 4
                                 else:
@@ -980,11 +958,7 @@ def main():
                             elif item_type == "Ingrédient":
                                 if ingredients:
                                     ingredient_names = ["-"] + [i['name'] for i in ingredients]
-                                    selected_item = st.selectbox(
-                                        "Ingrédient",
-                                        ingredient_names,
-                                        key=f"ingredient_{day_info['day_name']}_{day_info['day_number']}"
-                                    )
+                                    selected_item = st.selectbox("Ingrédient", ingredient_names, key=f"ingredient_{day_info['day_name']}_{day_info['day_number']}")
                                     selected_recipe = None
                                     default_servings = 1
                                 else:
@@ -992,64 +966,26 @@ def main():
                                     selected_recipe = None
                                     default_servings = 1
                             else:
-                                free_text = st.text_input(
-                                    "Texte libre",
-                                    placeholder="ex: Restaurant, Pizza, etc.",
-                                    key=f"free_text_{day_info['day_name']}_{day_info['day_number']}"
-                                )
+                                free_text = st.text_input("Texte libre", placeholder="ex: Restaurant, Pizza, etc.", key=f"free_text_{day_info['day_name']}_{day_info['day_number']}")
                                 selected_item = None
                                 selected_recipe = None
                                 default_servings = 1
                         
                         with col_servings:
                             if item_type == "Recette":
-                                servings = st.number_input(
-                                    "Convives",
-                                    min_value=1,
-                                    value=default_servings,
-                                    step=1,
-                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
-                                )
+                                servings = st.number_input("Convives", min_value=1, value=default_servings, step=1, key=f"servings_{day_info['day_name']}_{day_info['day_number']}")
                                 ingredient_qty = None
                             elif item_type == "Ingrédient":
                                 selected_ing_obj = next((i for i in ingredients if i['name'] == selected_item), None) if selected_item != "-" else None
                                 ing_unit = selected_ing_obj['unit'] if selected_ing_obj else ""
-                                
-                                if ing_unit:
-                                    label_qty = f"Quantité ({ing_unit})"
-                                else:
-                                    label_qty = "Quantité"
-                                
-                                ingredient_qty = st.number_input(
-                                    label_qty,
-                                    min_value=0.1,
-                                    value=float(default_servings),
-                                    step=0.5,
-                                    key=f"ingredient_qty_{day_info['day_name']}_{day_info['day_number']}",
-                                    help=f"Quantité en {ing_unit}" if ing_unit else "Quantité"
-                                )
-                                
-                                servings = st.number_input(
-                                    "Convives",
-                                    min_value=1,
-                                    value=4,
-                                    step=1,
-                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
-                                    help="Nombre de personnes pour ce repas"
-                                )
+                                label_qty = f"Quantité ({ing_unit})" if ing_unit else "Quantité"
+                                ingredient_qty = st.number_input(label_qty, min_value=0.1, value=float(default_servings), step=0.5, key=f"ingredient_qty_{day_info['day_name']}_{day_info['day_number']}")
+                                servings = st.number_input("Convives", min_value=1, value=4, step=1, key=f"servings_{day_info['day_name']}_{day_info['day_number']}")
                             else:
-                                servings = st.number_input(
-                                    "Convives",
-                                    min_value=1,
-                                    value=4,
-                                    step=1,
-                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
-                                    help="Nombre de personnes pour ce repas"
-                                )
+                                servings = st.number_input("Convives", min_value=1, value=4, step=1, key=f"servings_{day_info['day_name']}_{day_info['day_number']}")
                                 ingredient_qty = None
                         
                         col_add_btn, col_close_btn = st.columns(2)
-                        
                         with col_add_btn:
                             if st.button("➕ Ajouter", key=f"add_meal_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
                                 if meal_type == "-":
@@ -1073,10 +1009,7 @@ def main():
                                         elif item_type == "Ingrédient":
                                             ing_obj = next((i for i in ingredients if i['name'] == selected_item), None)
                                             if ing_obj:
-                                                existing_ing_recipe = next(
-                                                    (r for r in all_recipes if r['name'] == f"[Ing] {ing_obj['name']}"),
-                                                    None
-                                                )
+                                                existing_ing_recipe = next((r for r in all_recipes if r['name'] == f"[Ing] {ing_obj['name']}"), None)
                                                 if existing_ing_recipe:
                                                     ing_recipe_id = existing_ing_recipe['id']
                                                 else:
@@ -1123,7 +1056,6 @@ def main():
                                         refresh_data()
                                     except Exception as e:
                                         st.error(f"Erreur : {e}")
-                        
                         with col_close_btn:
                             if st.button("Fermer", key=f"close_expander_{day_info['day_name']}_{day_info['day_number']}", use_container_width=True):
                                 st.session_state[expander_key] = False
@@ -1153,12 +1085,7 @@ def main():
                                 qty_source = pm.get('ingredient_qty') or pm['servings']
                                 qty = convert_to_unit(qty_source, ing['unit'], unite_liste, ing.get('poids_piece_g'))
                                 if ing['id'] not in aggregated:
-                                    aggregated[ing['id']] = {
-                                        "name": ing['name'],
-                                        "qty": 0,
-                                        "unit": unite_liste,
-                                        "category": ing.get('category', 'Autre')
-                                    }
+                                    aggregated[ing['id']] = {"name": ing['name'], "qty": 0, "unit": unite_liste, "category": ing.get('category', 'Autre')}
                                 aggregated[ing['id']]['qty'] += qty
                         elif not rec['name'].startswith('[Txt] '):
                             ratio = pm['servings'] / rec.get('base_servings', 1)
@@ -1171,24 +1098,12 @@ def main():
                                     unite_liste = ing.get('unite_liste_courses') or ing['unit']
                                     qty = convert_to_unit(ri['quantity'] * ratio, ri_unit, unite_liste, ing.get('poids_piece_g'))
                                     if ing['id'] not in aggregated:
-                                        aggregated[ing['id']] = {
-                                            "name": ing['name'],
-                                            "qty": 0,
-                                            "unit": unite_liste,
-                                            "category": ing.get('category', 'Autre')
-                                        }
+                                        aggregated[ing['id']] = {"name": ing['name'], "qty": 0, "unit": unite_liste, "category": ing.get('category', 'Autre')}
                                     aggregated[ing['id']]['qty'] += qty
                     
                     recurrent = [i for i in ingredients_dict.values() if i.get('is_recurrent')]
                     
-                    pdf_bytes = generate_pdf(
-                        week_meals, 
-                        aggregated, 
-                        recurrent, 
-                        recipes_dict,
-                        ingredients_dict=ingredients_dict,
-                        start_date=start_date
-                    )
+                    pdf_bytes = generate_pdf(week_meals, aggregated, recurrent, recipes_dict, ingredients_dict=ingredients_dict, start_date=start_date)
                     if pdf_bytes:
                         st.session_state.pdf_bytes = pdf_bytes
                         st.session_state.show_pdf = True
@@ -1213,14 +1128,7 @@ def main():
                 open_pdf_button(st.session_state.pdf_bytes)
                 col_download, col_close = st.columns(2)
                 with col_download:
-                    st.download_button(
-                        "📥 Télécharger le PDF",
-                        data=st.session_state.pdf_bytes,
-                        file_name=f"menus_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf",
-                        mime="application/pdf",
-                        key="download_pdf_btn",
-                        use_container_width=True
-                    )
+                    st.download_button("📥 Télécharger le PDF", data=st.session_state.pdf_bytes, file_name=f"menus_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf", mime="application/pdf", key="download_pdf_btn", use_container_width=True)
                 with col_close:
                     if st.button("❌ Fermer", key="close_pdf_view", use_container_width=True):
                         st.session_state.show_pdf = False
@@ -1241,26 +1149,23 @@ def main():
         if not recipes:
             st.info("Aucune recette disponible.")
         else:
+            # Vérifier si une recette a été sélectionnée depuis "Menus du jour"
             if 'selected_recipe_for_consult' in st.session_state:
                 selected_recipe_id = st.session_state.selected_recipe_for_consult
                 selected_recipe = next((r for r in recipes if r['id'] == selected_recipe_id), None)
                 if selected_recipe:
-                    default_index = recipes.index(selected_recipe) + 1
+                    selected_name = selected_recipe['name']
                     del st.session_state.selected_recipe_for_consult
                 else:
-                    default_index = 0
+                    selected_name = None
             else:
-                default_index = 0
+                selected_name = None
             
-            recipe_names = ["-"] + [r['name'] for r in recipes]
-            selected_name = st.selectbox(
-                "Choisir une recette", 
-                recipe_names,
-                index=default_index,
-                key="consult_recipe_select"
-            )
+            if selected_name is None:
+                recipe_names = ["-"] + [r['name'] for r in recipes]
+                selected_name = st.selectbox("Choisir une recette", recipe_names, key="consult_recipe_select")
             
-            if selected_name == "-":
+            if selected_name == "-" or selected_name is None:
                 st.info("Sélectionnez une recette à consulter.")
             else:
                 recipe = next((r for r in recipes if r['name'] == selected_name), None)
@@ -1273,14 +1178,7 @@ def main():
                         st.subheader(f"📖 {recipe['name']}")
                     with col_servings:
                         base_servings = recipe.get('base_servings', 4)
-                        target_servings = st.number_input(
-                            "Nombre de personnes",
-                            min_value=1,
-                            max_value=50,
-                            value=base_servings,
-                            step=1,
-                            key=f"consult_servings_{recipe['id']}"
-                        )
+                        target_servings = st.number_input("Nombre de personnes", min_value=1, max_value=50, value=base_servings, step=1, key=f"consult_servings_{recipe['id']}")
                     
                     ratio = target_servings / base_servings if base_servings > 0 else 1
                     
@@ -1326,12 +1224,7 @@ def main():
         recipe_ings = st.session_state.data.get('recipe_ingredients', [])
         ingredients = sort_list_by_name(st.session_state.data.get('ingredients', []))
 
-        mode = st.radio(
-            "Mode",
-            ["➕ Créer une nouvelle recette", "✏️ Éditer une recette existante"],
-            horizontal=True,
-            key="recipe_mode"
-        )
+        mode = st.radio("Mode", ["➕ Créer une nouvelle recette", "✏️ Éditer une recette existante"], horizontal=True, key="recipe_mode")
 
         st.markdown("---")
 
