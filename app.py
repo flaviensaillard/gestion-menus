@@ -184,11 +184,9 @@ def open_pdf_button(pdf_bytes: bytes):
     components.html(html_component, height=60)
 
 def convert_to_unit(quantity: float, unit_source: str, unit_cible: str, poids_piece_g: float = None) -> float:
-    """Convertit une quantité vers l'unité cible."""
     unit_source = unit_source.lower().strip() if unit_source else ""
     unit_cible = unit_cible.lower().strip() if unit_cible else ""
     
-    # Conversion vers kg
     if unit_source in ['g', 'gramme', 'grammes']:
         qty_kg = quantity / 1000
     elif unit_source in ['kg', 'kilo', 'kilos']:
@@ -211,7 +209,6 @@ def convert_to_unit(quantity: float, unit_source: str, unit_cible: str, poids_pi
     else:
         qty_kg = quantity
     
-    # Conversion depuis kg vers l'unité cible
     if unit_cible in ['g', 'gramme', 'grammes']:
         return qty_kg * 1000
     elif unit_cible in ['kg', 'kilo', 'kilos']:
@@ -472,7 +469,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             y += day_height + day_gap
         
-        # Colonne droite : Liste de courses
         y_right = margin
         
         pdf.set_fill_color(*orange_bg)
@@ -515,7 +511,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
-        # Produits récurrents
         if recurrent_items:
             y_right += 3
             
@@ -651,7 +646,10 @@ def main():
                                             if rec['name'].startswith('[Ing] '):
                                                 ing_obj = next((i for i in ingredients if i['name'] == item_name), None)
                                                 if ing_obj:
-                                                    item_name = f"{item_name} ({meal.get('servings', 1)} {ing_obj['unit']})"
+                                                    if meal.get('ingredient_qty'):
+                                                        item_name = f"{item_name} ({meal['ingredient_qty']} {ing_obj['unit']})"
+                                                    else:
+                                                        item_name = f"{item_name} ({meal.get('servings', 1)} {ing_obj['unit']})"
                                         else:
                                             item_name = 'Inconnu'
                                     else:
@@ -741,25 +739,36 @@ def main():
                                     step=1,
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}"
                                 )
+                                ingredient_qty = None
                             elif item_type == "Ingrédient":
                                 selected_ing_obj = next((i for i in ingredients if i['name'] == selected_item), None) if selected_item != "-" else None
                                 ing_unit = selected_ing_obj['unit'] if selected_ing_obj else ""
                                 
                                 if ing_unit:
-                                    label = f"Quantité ({ing_unit})"
+                                    label_qty = f"Quantité ({ing_unit})"
                                 else:
-                                    label = "Quantité"
+                                    label_qty = "Quantité"
                                 
-                                servings = st.number_input(
-                                    label,
+                                ingredient_qty = st.number_input(
+                                    label_qty,
                                     min_value=0.1,
                                     value=float(default_servings),
                                     step=0.5,
-                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
+                                    key=f"ingredient_qty_{day_info['day_name']}_{day_info['day_number']}",
                                     help=f"Quantité en {ing_unit}" if ing_unit else "Quantité"
+                                )
+                                
+                                servings = st.number_input(
+                                    "Convives",
+                                    min_value=1,
+                                    value=4,
+                                    step=1,
+                                    key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
+                                    help="Nombre de personnes pour ce repas"
                                 )
                             else:
                                 servings = 1
+                                ingredient_qty = None
                         
                         col_add_btn, col_close_btn = st.columns(2)
                         
@@ -818,7 +827,8 @@ def main():
                                                     "date_menu": day_info['date'].isoformat(),
                                                     "meal_type": meal_type,
                                                     "recipe_id": ing_recipe_id,
-                                                    "servings": servings
+                                                    "servings": servings,
+                                                    "ingredient_qty": ingredient_qty
                                                 }).execute()
                                         elif item_type == "Texte libre":
                                             txt_recipe = supabase.table("recipes").insert({
@@ -870,8 +880,9 @@ def main():
                             ing_name = get_display_name(rec)
                             ing = next((i for i in ingredients_dict.values() if i['name'] == ing_name), None)
                             if ing and not ing.get('exclude_from_list'):
-                                unite_liste = ing.get('unite_liste_course') or ing['unit']
-                                qty = convert_to_unit(pm['servings'], ing['unit'], unite_liste, ing.get('poids_piece_g'))
+                                unite_liste = ing.get('unite_liste_courses') or ing['unit']
+                                qty_source = pm.get('ingredient_qty') or pm['servings']
+                                qty = convert_to_unit(qty_source, ing['unit'], unite_liste, ing.get('poids_piece_g'))
                                 
                                 if ing['id'] not in aggregated:
                                     aggregated[ing['id']] = {
@@ -890,7 +901,7 @@ def main():
                                         continue
                                     
                                     ri_unit = ri.get('unit') or ing['unit']
-                                    unite_liste = ing.get('unite_liste_course') or ing['unit']
+                                    unite_liste = ing.get('unite_liste_courses') or ing['unit']
                                     qty = convert_to_unit(ri['quantity'] * ratio, ri_unit, unite_liste, ing.get('poids_piece_g'))
                                     
                                     if ing['id'] not in aggregated:
@@ -1521,7 +1532,7 @@ def main():
                                 "exclude_from_list": exclude,
                                 "is_recurrent": recurrent,
                                 "poids_piece_g": poids_piece if poids_piece > 0 else None,
-                                "unite_liste_course": unite_liste if unite_liste != "-" else None
+                                "unite_liste_courses": unite_liste if unite_liste != "-" else None
                             }
                             
                             supabase.table("ingredients").insert(data_to_insert).execute()
@@ -1538,7 +1549,7 @@ def main():
         
         if ingredients:
             has_poids = 'poids_piece_g' in ingredients[0] if ingredients else False
-            has_unite_liste = 'unite_liste_course' in ingredients[0] if ingredients else False
+            has_unite_liste = 'unite_liste_courses' in ingredients[0] if ingredients else False
             
             columns_to_show = ['name', 'unit', 'category', 'exclude_from_list', 'is_recurrent']
             column_config = {
@@ -1554,8 +1565,8 @@ def main():
                 column_config["poids_piece_g"] = st.column_config.NumberColumn("Poids (g/pièce)", format="%.0f")
             
             if has_unite_liste:
-                columns_to_show.append('unite_liste_course')
-                column_config["unite_liste_course"] = "Unité liste"
+                columns_to_show.append('unite_liste_courses')
+                column_config["unite_liste_courses"] = "Unité liste"
             
             df_display = pd.DataFrame(ingredients)[columns_to_show]
             
@@ -1608,7 +1619,7 @@ def main():
                             
                             st.markdown("---")
                             col5, col6 = st.columns(2)
-                            current_unite_liste = selected_ing.get('unite_liste_course')
+                            current_unite_liste = selected_ing.get('unite_liste_courses')
                             unite_liste_index = UNITES.index(current_unite_liste) + 1 if current_unite_liste in UNITES else 0
                             new_unite_liste = col5.selectbox(
                                 "Unité liste de courses",
@@ -1637,7 +1648,7 @@ def main():
                                         "category": new_category,
                                         "exclude_from_list": new_exclude,
                                         "is_recurrent": new_recurrent,
-                                        "unite_liste_course": new_unite_liste if new_unite_liste != "-" else None
+                                        "unite_liste_courses": new_unite_liste if new_unite_liste != "-" else None
                                     }
                                     if 'poids_piece_g' in selected_ing:
                                         update_data["poids_piece_g"] = new_poids if new_poids > 0 else None
