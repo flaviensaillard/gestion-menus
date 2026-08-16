@@ -599,18 +599,46 @@ def main():
     if 'data' not in st.session_state:
         st.session_state.data = load_data()
 
-    tab_menus_jour, tab_menus, tab_consulter, tab_editer, tab_ingredients = st.tabs([
-        "📅 Menus du jour",
-        "📅 Menus", 
-        "🔍 Consulter", 
-        "✏️ Créer / Éditer", 
-        "🥕 Ingrédients"
-    ])
+    if 'active_tab' not in st.session_state:
+        st.session_state.active_tab = "Menus du jour"
+
+    # Navigation par boutons
+    col_nav1, col_nav2, col_nav3, col_nav4, col_nav5 = st.columns(5)
+    nav_labels = ["Menus du jour", "Menus", "Consulter", "Créer / Éditer", "Ingrédients"]
+    nav_emojis = ["📅", "📅", "🔍", "✏️", "🥕"]
+    
+    with col_nav1:
+        if st.button("📅 Menus du jour", key="nav_menus_jour", use_container_width=True,
+                     type="primary" if st.session_state.active_tab == "Menus du jour" else "secondary"):
+            st.session_state.active_tab = "Menus du jour"
+            st.rerun()
+    with col_nav2:
+        if st.button("📅 Menus", key="nav_menus", use_container_width=True,
+                     type="primary" if st.session_state.active_tab == "Menus" else "secondary"):
+            st.session_state.active_tab = "Menus"
+            st.rerun()
+    with col_nav3:
+        if st.button("🔍 Consulter", key="nav_consulter", use_container_width=True,
+                     type="primary" if st.session_state.active_tab == "Consulter" else "secondary"):
+            st.session_state.active_tab = "Consulter"
+            st.rerun()
+    with col_nav4:
+        if st.button("✏️ Créer / Éditer", key="nav_editer", use_container_width=True,
+                     type="primary" if st.session_state.active_tab == "Créer / Éditer" else "secondary"):
+            st.session_state.active_tab = "Créer / Éditer"
+            st.rerun()
+    with col_nav5:
+        if st.button("🥕 Ingrédients", key="nav_ingredients", use_container_width=True,
+                     type="primary" if st.session_state.active_tab == "Ingrédients" else "secondary"):
+            st.session_state.active_tab = "Ingrédients"
+            st.rerun()
+
+    st.markdown("---")
 
     # ============================
-    # ONGLET 0 : MENUS DU JOUR
+    # MENUS DU JOUR
     # ============================
-    with tab_menus_jour:
+    if st.session_state.active_tab == "Menus du jour":
         st.header("Menus du jour")
         
         planned_meals = st.session_state.data.get('planned_meals', [])
@@ -645,7 +673,6 @@ def main():
         if not day_meals:
             st.info("Aucun repas planifié pour ce jour.")
         else:
-            # Déjeuner
             st.markdown(f"### 🍳 Déjeuner")
             if 'Midi' in meals_by_type:
                 meals = meals_by_type['Midi']
@@ -673,9 +700,9 @@ def main():
                                 st.markdown(f"• {item_name}")
                             
                             else:
-                                # Recette normale - lien cliquable
                                 if st.button(f"🔗 {item_name}", key=f"link_midi_{meal['id']}", help="Voir la recette"):
                                     st.session_state.selected_recipe_for_consult = rec['id']
+                                    st.session_state.active_tab = "Consulter"
                                     st.rerun()
                     else:
                         st.markdown(f"• -")
@@ -684,7 +711,6 @@ def main():
             
             st.markdown("---")
             
-            # Dîner
             st.markdown(f"### 🌙 Dîner")
             if 'Soir' in meals_by_type:
                 meals = meals_by_type['Soir']
@@ -714,6 +740,7 @@ def main():
                             else:
                                 if st.button(f"🔗 {item_name}", key=f"link_soir_{meal['id']}", help="Voir la recette"):
                                     st.session_state.selected_recipe_for_consult = rec['id']
+                                    st.session_state.active_tab = "Consulter"
                                     st.rerun()
                     else:
                         st.markdown(f"• -")
@@ -721,9 +748,9 @@ def main():
                 st.markdown("*Aucun dîner planifié*")
 
     # ============================
-    # ONGLET 1 : MENUS
+    # MENUS (PLANIFICATION)
     # ============================
-    with tab_menus:
+    elif st.session_state.active_tab == "Menus":
         st.header("Planification des menus")
         
         planned_meals = st.session_state.data.get('planned_meals', [])
@@ -1220,9 +1247,9 @@ def main():
                         st.rerun()
 
     # ============================
-    # ONGLET 2 : CONSULTER UNE RECETTE
+    # CONSULTER
     # ============================
-    with tab_consulter:
+    elif st.session_state.active_tab == "Consulter":
         st.header("Consulter une recette")
         
         all_recipes = st.session_state.data.get('recipes', [])
@@ -1310,9 +1337,9 @@ def main():
                         st.info("Aucune instruction pour cette recette.")
 
     # ============================
-    # ONGLET 3 : CRÉER / ÉDITER UNE RECETTE
+    # CRÉER / ÉDITER
     # ============================
-    with tab_editer:
+    elif st.session_state.active_tab == "Créer / Éditer":
         st.header("Créer / Éditer une recette")
 
         all_recipes = st.session_state.data.get('recipes', [])
@@ -1747,9 +1774,9 @@ def main():
                                 st.info("Tous les ingrédients disponibles sont déjà dans cette recette")
 
     # ============================
-    # ONGLET 4 : INGRÉDIENTS
+    # INGRÉDIENTS
     # ============================
-    with tab_ingredients:
+    elif st.session_state.active_tab == "Ingrédients":
         st.header("Ingrédients")
 
         if st.button("➕ Ajouter un ingrédient", key="btn_show_add_ing", use_container_width=True):
