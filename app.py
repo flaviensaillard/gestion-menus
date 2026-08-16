@@ -31,7 +31,6 @@ RAYONS = ["Fruits & Légumes", "Boucherie & Poissonnerie", "Frais & Produits Lai
 JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 REPAS = ["Midi", "Soir"]
 
-# Mapping des jours en français
 JOURS_FR = {
     'Monday': 'Lundi',
     'Tuesday': 'Mardi',
@@ -42,7 +41,6 @@ JOURS_FR = {
     'Sunday': 'Dimanche'
 }
 
-# Mapping des repas
 REPAS_LABELS = {
     'Midi': 'Déjeuner',
     'Soir': 'Dîner'
@@ -69,7 +67,6 @@ supabase = init_supabase()
 # CHARGEMENT DES DONNÉES
 # ------------------------------
 def load_data() -> Dict[str, List]:
-    """Charge les données depuis Supabase."""
     if not supabase:
         return {}
     
@@ -83,7 +80,6 @@ def load_data() -> Dict[str, List]:
     return data
 
 def refresh_data():
-    """Recharge les données et rafraîchit la page."""
     st.session_state.data = load_data()
     st.rerun()
 
@@ -91,7 +87,6 @@ def refresh_data():
 # FONCTIONS UTILITAIRES
 # ------------------------------
 def clean_pdf_str(text: Any) -> str:
-    """Nettoie les chaînes pour FPDF."""
     if not text:
         return ""
     
@@ -110,19 +105,16 @@ def clean_pdf_str(text: Any) -> str:
     return result.encode('latin-1', 'replace').decode('latin-1')
 
 def format_quantity(qty: float) -> str:
-    """Formate les quantités proprement."""
     if isinstance(qty, float) and qty.is_integer():
         return str(int(qty))
     return f"{qty:.2f}".rstrip('0').rstrip('.')
 
 def instructions_to_text(instructions_list: List[str]) -> str:
-    """Convertit une liste d'instructions en texte numéroté."""
     if not instructions_list:
         return ""
     return "\n".join([f"{i+1}. {instr}" for i, instr in enumerate(instructions_list) if instr.strip()])
 
 def text_to_instructions(text: str) -> List[str]:
-    """Convertit un texte numéroté en liste d'instructions."""
     if not text:
         return [""]
     
@@ -142,11 +134,9 @@ def text_to_instructions(text: str) -> List[str]:
     return instructions if instructions else [""]
 
 def sort_list_by_name(items: List[Dict]) -> List[Dict]:
-    """Trie une liste de dictionnaires par le champ 'name'."""
     return sorted(items, key=lambda x: x.get('name', '').lower())
 
 def get_display_name(recipe: Dict) -> str:
-    """Retourne le nom d'affichage d'une recette (sans les préfixes)."""
     name = recipe.get('name', '')
     if name.startswith('[Ing] '):
         return name[6:]
@@ -155,7 +145,6 @@ def get_display_name(recipe: Dict) -> str:
     return name
 
 def open_pdf_button(pdf_bytes: bytes):
-    """Affiche un bouton qui ouvre le PDF dans un nouvel onglet."""
     b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
     
     html_component = f"""
@@ -195,16 +184,12 @@ def open_pdf_button(pdf_bytes: bytes):
     components.html(html_component, height=60)
 
 def convert_to_kg(quantity: float, unit: str, poids_piece_g: float = None) -> float:
-    """Convertit une quantité en kg."""
     unit = unit.lower().strip() if unit else ""
     
-    # Unités de masse
     if unit in ['g', 'gramme', 'grammes']:
         return quantity / 1000
     elif unit in ['kg', 'kilo', 'kilos']:
         return quantity
-    
-    # Unités de liquide (approximation densité = 1)
     elif unit in ['ml', 'millilitre']:
         return quantity / 1000
     elif unit in ['cl', 'centilitre']:
@@ -215,8 +200,6 @@ def convert_to_kg(quantity: float, unit: str, poids_piece_g: float = None) -> fl
         return quantity * 0.015
     elif unit in ['c. à café', 'cuillère à café']:
         return quantity * 0.005
-    
-    # Pièces, barquettes, etc.
     elif unit in ['unité', 'pièce', 'tranche', 'gousse', 'sachet', 'boîte', 'barquette']:
         if poids_piece_g is not None and poids_piece_g > 0:
             return (quantity * poids_piece_g) / 1000
@@ -231,13 +214,11 @@ def convert_to_kg(quantity: float, unit: str, poids_piece_g: float = None) -> fl
 def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                  recurrent_items: List[Dict], recipes_dict: Dict, 
                  start_date: date = None) -> bytes:
-    """Génère un PDF A4 avec le menu et la liste de courses."""
     try:
         pdf = FPDF(format='A4', unit='mm')
         pdf.set_auto_page_break(auto=False)
         pdf.add_page()
         
-        # Dimensions
         page_width = 210
         page_height = 297
         margin = 10
@@ -246,7 +227,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         gap = 5
         day_block_width = 15
         
-        # Couleurs
         green_bg = (200, 230, 200)
         orange_bg = (255, 220, 180)
         gray_bg = (240, 240, 240)
@@ -254,7 +234,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         soir_bg = (240, 245, 255)
         day_bg = (245, 245, 220)
         
-        # Tailles de police
         title_font_size = 28
         period_font_size = 20
         day_font_size = 13
@@ -262,17 +241,14 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         courses_font_size = 10
         courses_line_height = 4.5
         
-        # Positions
         left_x = margin
         right_x = margin + left_width + gap
         
-        # Ligne pointillée de découpe
         pdf.set_draw_color(150, 150, 150)
         pdf.set_dash_pattern(dash=1, gap=2)
         pdf.line(right_x - gap/2, margin, right_x - gap/2, page_height - margin)
         pdf.set_dash_pattern()
         
-        # Générer les jours
         if start_date:
             week_days = []
             for i in range(7):
@@ -283,7 +259,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         else:
             week_days = [{'day_name': d, 'date': None} for d in JOURS]
         
-        # Regrouper les repas par date et type
         schedule = {}
         for day_info in week_days:
             day_name = day_info['day_name']
@@ -291,7 +266,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             schedule[day_name] = {"Midi": [], "Soir": []}
             
             for pm in planned_meals:
-                # Filtrer par date si disponible
                 if day_date and pm.get('date_menu'):
                     if pm.get('date_menu') != day_date.isoformat():
                         continue
@@ -312,7 +286,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                         'has_recipe': pm.get('recipe_id') is not None
                     })
         
-        # En-tête
         pdf.set_font('Helvetica', 'B', title_font_size)
         pdf.set_xy(left_x, margin)
         pdf.cell(left_width, 12, clean_pdf_str('Menus de la semaine'), align='C')
@@ -325,7 +298,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         
         y_start = margin + 22
         
-        # Titre planning
         planning_title_height = 7
         pdf.set_fill_color(*green_bg)
         pdf.set_xy(left_x, y_start)
@@ -335,17 +307,11 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         planning_right_edge = left_x + left_width
         content_y_start = y_start + planning_title_height + 2
         
-        # Hauteur totale disponible
         total_available = page_height - margin - content_y_start
-        
-        # Espace entre les jours
         day_gap = 1.5
-        
-        # Hauteur pour les 7 jours
         days_available = total_available - (len(week_days) - 1) * day_gap
         day_height = days_available / len(week_days)
         
-        # Hauteur minimale pour le texte vertical
         pdf.set_font('Helvetica', 'B', day_font_size)
         dimanche_width = pdf.get_string_width('Dimanche')
         min_height = dimanche_width + 6
@@ -356,7 +322,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             if total_needed > total_available:
                 day_height = (total_available - (len(week_days) - 1) * day_gap) / len(week_days)
         
-        # Calculer la hauteur de ligne pour les plats
         inner_height = day_height - 1
         title_space = 4
         food_space = max(inner_height - title_space, 2)
@@ -375,13 +340,10 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             meal_line_height = 4
         
         meal_spacing = 0.5
-        
         y = content_y_start
         
-        # Affichage des 7 jours
         for i, day_info in enumerate(week_days):
             day_name = day_info['day_name']
-            
             midi_items = schedule[day_name]['Midi']
             soir_items = schedule[day_name]['Soir']
             
@@ -389,7 +351,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             content_width = planning_right_edge - content_x
             
             total_inner_height = day_height - 0.5
-            
             interline = 1
             remaining_height = total_inner_height - interline
             
@@ -404,7 +365,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 midi_height = remaining_height / 2
                 soir_height = remaining_height / 2
             
-            # Bloc jour
             pdf.set_fill_color(*day_bg)
             pdf.rect(left_x, y, day_block_width, total_inner_height, 'F')
             pdf.set_draw_color(200, 200, 200)
@@ -418,7 +378,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(left_x + day_block_width/2 - text_width/2, y + total_inner_height/2 - text_height/2)
                 pdf.cell(text_width, text_height, clean_pdf_str(day_name), align='C')
             
-            # Déjeuner
             pdf.set_fill_color(*midi_bg)
             pdf.rect(content_x, y, content_width, midi_height, 'F')
             pdf.set_draw_color(220, 220, 220)
@@ -453,7 +412,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                 pdf.set_xy(content_x + 41, y + 0.5)
                 pdf.cell(content_width - 46, meal_line_height, '-', border=0, ln=True)
             
-            # Dîner
             y_diner = y + midi_height + interline
             
             pdf.set_fill_color(*soir_bg)
@@ -492,7 +450,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
             
             y += day_height + day_gap
         
-        # Colonne droite : Liste de courses
         y_right = margin
         
         pdf.set_fill_color(*orange_bg)
@@ -534,7 +491,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
-        # Produits récurrents
         if recurrent_items:
             y_right += 3
             
@@ -636,7 +592,6 @@ def main():
                     else:
                         st.markdown(f"### 📅 {day_info['day_name']} {day_info['day_number']}")
                     
-                    # Filtrer les repas par date exacte
                     day_date_str = day_info['date'].isoformat()
                     day_meals = [
                         pm for pm in planned_meals 
@@ -752,7 +707,7 @@ def main():
                                 selected_recipe = None
                                 default_servings = 1
                         
-                                                                        with col_servings:
+                        with col_servings:
                             if item_type == "Recette":
                                 servings = st.number_input(
                                     "Convives",
@@ -869,7 +824,6 @@ def main():
                     
                     st.markdown("---")
             
-            # Actions en bas
             st.markdown("---")
             col_export, col_clear = st.columns(2)
             
@@ -878,7 +832,6 @@ def main():
                     ingredients_dict = {i['id']: i for i in st.session_state.data.get('ingredients', [])}
                     recipe_ings = st.session_state.data.get('recipe_ingredients', [])
                     
-                    # Filtrer les repas de la semaine sélectionnée
                     week_dates = [d['date'].isoformat() for d in week_days]
                     week_meals = [pm for pm in planned_meals if pm.get('date_menu') in week_dates]
                     
@@ -945,7 +898,6 @@ def main():
                     except Exception as e:
                         st.error(f"Erreur : {e}")
             
-            # Afficher le PDF si demandé
             if st.session_state.get('show_pdf', False) and st.session_state.get('pdf_bytes'):
                 st.markdown("---")
                 st.success("✅ PDF généré avec succès !")
