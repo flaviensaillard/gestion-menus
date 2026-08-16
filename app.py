@@ -110,13 +110,11 @@ def format_quantity(qty: float) -> str:
     return f"{qty:.2f}".rstrip('0').rstrip('.')
 
 def format_servings(servings: float) -> str:
-    """Formate le nombre de convives sans décimales inutiles."""
     if servings == int(servings):
         return str(int(servings))
     return str(servings)
 
 def format_liste_quantity(qty: float, unit: str) -> tuple:
-    """Formate la quantité pour la liste de courses avec conversion auto."""
     if unit in ['g', 'gramme', 'grammes'] and qty >= 1000:
         return qty / 1000, 'kg'
     elif unit in ['ml', 'millilitre'] and qty >= 1000:
@@ -314,7 +312,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     ingredient_qty = pm.get('ingredient_qty')
                     
                     if is_ingredient and ingredient_qty:
-                        # Trouver l'unité de l'ingrédient
                         ing_unit = None
                         if ingredients_dict:
                             for ing in ingredients_dict.values():
@@ -327,8 +324,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                             rec_name = f"{rec_name} ({format_quantity(ingredient_qty)})"
                 else:
                     rec_name = 'Inconnu'
-                    is_ingredient = False
-                    ingredient_qty = None
                 
                 meal_type = pm.get('meal_type')
                 if meal_type in schedule[day_name]:
@@ -536,7 +531,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                         qty = it['qty']
                         unit = it.get('unit', '')
                         
-                        # Conversion automatique
                         qty_display, unit_display = format_liste_quantity(qty, unit)
                         qty_str = format_quantity(qty_display)
                         
@@ -551,7 +545,6 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
                     
                     y_right += 1
         
-        # Produits récurrents sur 2 colonnes
         if recurrent_items:
             y_right += 3
             
@@ -707,9 +700,12 @@ def main():
                                     else:
                                         item_name = '-'
                                     
-                                    col_item, col_del = st.columns([10, 1])
+                                    col_item, col_edit, col_del = st.columns([8, 1, 1])
                                     with col_item:
                                         st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;• {item_name}")
+                                    with col_edit:
+                                        if st.button("✏️", key=f"edit_btn_{meal['id']}", help="Modifier"):
+                                            st.session_state[f"show_edit_{meal['id']}"] = True
                                     with col_del:
                                         if st.button("❌", key=f"del_meal_{meal['id']}", help="Supprimer"):
                                             try:
@@ -717,6 +713,96 @@ def main():
                                                 refresh_data()
                                             except Exception as e:
                                                 st.error(f"Erreur : {e}")
+                                    
+                                    # Formulaire d'édition
+                                    if st.session_state.get(f"show_edit_{meal['id']}", False):
+                                        with st.expander(f"✏️ Modifier : {item_name}", expanded=True):
+                                            rec = recipes_dict.get(meal.get('recipe_id'))
+                                            
+                                            if rec and rec['name'].startswith('[Ing] '):
+                                                ing_name = get_display_name(rec)
+                                                ing_obj = next((i for i in ingredients if i['name'] == ing_name), None)
+                                                
+                                                col1, col2, col3 = st.columns(3)
+                                                with col1:
+                                                    new_qty = st.number_input(
+                                                        f"Quantité ({ing_obj['unit'] if ing_obj else ''})",
+                                                        min_value=0.1,
+                                                        value=float(meal.get('ingredient_qty') or meal.get('servings', 1)),
+                                                        step=0.5,
+                                                        key=f"edit_qty_{meal['id']}"
+                                                    )
+                                                with col2:
+                                                    new_servings = st.number_input(
+                                                        "Convives",
+                                                        min_value=1,
+                                                        value=int(meal.get('servings', 4)),
+                                                        step=1,
+                                                        key=f"edit_serv_{meal['id']}"
+                                                    )
+                                                with col3:
+                                                    st.write("")
+                                                    st.write("")
+                                                    if st.button("💾 Enregistrer", key=f"save_edit_{meal['id']}", use_container_width=True):
+                                                        supabase.table("planned_meals").update({
+                                                            "ingredient_qty": new_qty,
+                                                            "servings": new_servings
+                                                        }).eq("id", meal['id']).execute()
+                                                        st.session_state[f"show_edit_{meal['id']}"] = False
+                                                        refresh_data()
+                                            
+                                            elif rec and rec['name'].startswith('[Txt] '):
+                                                col1, col2, col3 = st.columns(3)
+                                                with col1:
+                                                    new_text = st.text_input(
+                                                        "Texte",
+                                                        value=get_display_name(rec),
+                                                        key=f"edit_txt_{meal['id']}"
+                                                    )
+                                                with col2:
+                                                    new_servings = st.number_input(
+                                                        "Convives",
+                                                        min_value=1,
+                                                        value=int(meal.get('servings', 4)),
+                                                        step=1,
+                                                        key=f"edit_serv_{meal['id']}"
+                                                    )
+                                                with col3:
+                                                    st.write("")
+                                                    st.write("")
+                                                    if st.button("💾 Enregistrer", key=f"save_edit_{meal['id']}", use_container_width=True):
+                                                        supabase.table("recipes").update({
+                                                            "name": f"[Txt] {new_text.strip()}"
+                                                        }).eq("id", meal['recipe_id']).execute()
+                                                        supabase.table("planned_meals").update({
+                                                            "servings": new_servings
+                                                        }).eq("id", meal['id']).execute()
+                                                        st.session_state[f"show_edit_{meal['id']}"] = False
+                                                        refresh_data()
+                                            
+                                            elif rec:
+                                                col1, col2 = st.columns(2)
+                                                with col1:
+                                                    new_servings = st.number_input(
+                                                        "Convives",
+                                                        min_value=1,
+                                                        value=int(meal.get('servings', rec.get('base_servings', 4))),
+                                                        step=1,
+                                                        key=f"edit_serv_{meal['id']}"
+                                                    )
+                                                with col2:
+                                                    st.write("")
+                                                    st.write("")
+                                                    if st.button("💾 Enregistrer", key=f"save_edit_{meal['id']}", use_container_width=True):
+                                                        supabase.table("planned_meals").update({
+                                                            "servings": new_servings
+                                                        }).eq("id", meal['id']).execute()
+                                                        st.session_state[f"show_edit_{meal['id']}"] = False
+                                                        refresh_data()
+                                            
+                                            if st.button("❌ Fermer", key=f"close_edit_{meal['id']}"):
+                                                st.session_state[f"show_edit_{meal['id']}"] = False
+                                                st.rerun()
                     else:
                         st.caption("Aucun repas planifié")
                     
