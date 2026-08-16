@@ -463,7 +463,7 @@ def generate_pdf(planned_meals: List[Dict], aggregated_items: Dict,
         for item in aggregated_items.values():
             by_cat[item.get('category', 'Autre')].append(item)
         
-                if not by_cat:
+        if not by_cat:
             pdf.set_xy(right_x + 3, y_right)
             pdf.set_font('Helvetica', 'I', courses_font_size)
             pdf.cell(right_width - 6, 5, 'Aucun article', ln=True)
