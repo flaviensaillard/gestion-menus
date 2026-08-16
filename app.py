@@ -610,7 +610,6 @@ def main():
         # Si on vient de cliquer sur un lien recette, forcer l'onglet Consulter
         if 'force_consult' in st.session_state and st.session_state.force_consult:
             current_index = 2  # Index de "🔍 Consulter"
-            # Ne pas supprimer force_consult ici, on le fera après le radio
         else:
             current_index = nav_options.index(st.session_state.active_tab) if st.session_state.active_tab in nav_options else 0
         
@@ -1211,13 +1210,12 @@ def main():
                                 qty_display = format_quantity(qty_adjusted)
                                 display_unit = ri.get('unit') or ing['unit']
                                 
-                                col1, col2, col3 = st.columns([3, 2, 2])
+                                # Affichage sans le rayon
+                                col1, col2 = st.columns([2, 1])
                                 with col1:
                                     st.markdown(f"**{ing['name']}**")
                                 with col2:
                                     st.markdown(f"{qty_display} {display_unit}")
-                                with col3:
-                                    st.markdown(f"*{ing.get('category', 'Autre')}*")
                     else:
                         st.info("Aucun ingrédient pour cette recette.")
                     
