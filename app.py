@@ -752,7 +752,7 @@ def main():
                                 selected_recipe = None
                                 default_servings = 1
                         
-                                                with col_servings:
+                                                                        with col_servings:
                             if item_type == "Recette":
                                 servings = st.number_input(
                                     "Convives",
@@ -772,9 +772,9 @@ def main():
                                 
                                 servings = st.number_input(
                                     label,
-                                    min_value=0.1,  # Changé de 1 à 0.1
+                                    min_value=0.1,
                                     value=float(default_servings),
-                                    step=0.5,  # Pas de 0.5
+                                    step=0.5,
                                     key=f"servings_{day_info['day_name']}_{day_info['day_number']}",
                                     help=f"Quantité en {ing_unit}" if ing_unit else "Quantité"
                                 )
